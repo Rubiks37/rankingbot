@@ -1,6 +1,9 @@
 import discord
 from discord import app_commands
+from discord.app_commands import Choice
 import sqlite3
+
+
 import config
 import statistics
 
@@ -12,11 +15,17 @@ client = discord.Client(intents=intents, allowed_mentions=allowed_mentions)
 
 # sets up command tree to have application commands run with
 tree = app_commands.CommandTree(client)
+
+# sets up guild/channel/permissions objects for later use
 guild = discord.Object(config.GUILD)
 
 # connect to SQLite3 Database (Just a server file)
 conn = sqlite3.connect('rankings.db')
 
+
+# boolean variable that will determine if the album changelog is active
+# this is a future feature that i don't care enough to implement now
+changelog = True
 
 # all the following functions will be needed to help make the app commands more readable and easier to follow
 
@@ -72,6 +81,20 @@ def get_rows(user_id):
     rows = cursor.fetchall()
     cursor.close()
     return rows
+
+
+# Gets ever single user_id, pulls all rows and returns them (yes its like a 4 dimensional list shut up)
+def get_every_row(unique: bool):
+    final_rows = []
+    user_ids = get_users()
+    for user_id in user_ids:
+        rows = get_rows(user_id)
+        if unique:
+            [final_rows.append(row[slice(0, 2)]) for row in rows
+             if (strip_names(row[0])[0] or strip_names(row[1])[0]) not in strip_names(final_rows)[0]]
+        else:
+            final_rows.append(rows)
+    return final_rows
 
 
 # transforms rows into nice looking string
@@ -184,8 +207,8 @@ def remove_row(user_id, index):
     if len(rows) - 1 < index or index < 0:
         raise IndexError("error: an invalid index was entered (probably because it doesn't exist)")
     affected = cursor.execute(f"DELETE FROM user_data_{user_id} "
-                            f"WHERE artists = ? AND title = ? AND rating = ?",
-                            (rows[index][0], rows[index][1], rows[index][2]))
+                              f"WHERE artists = ? AND title = ? AND rating = ?",
+                              (rows[index][0], rows[index][1], rows[index][2]))
     conn.commit()
     cursor.close()
     if affected is None:
@@ -234,7 +257,7 @@ def get_album_stats(content):
     title = strip_names(content)[0]
     row = transform_readable(title)
     if row is None:
-        raise LookupError('error: no albums found matching the name ' + content)
+        raise LookupError('error: no albums found matching the name \"' + content + '\"')
     ratings = get_album_ratings(row[1])
     num_ratings = len(ratings)
     mean = round(statistics.mean(ratings), 2)
@@ -243,6 +266,16 @@ def get_album_stats(content):
         std_deviation = round(statistics.stdev(ratings), 2)
         final_string += f"\nStandard Deviation: {std_deviation}"
     return final_string
+
+
+# returns part of a decorator that can be used to give choices to application commands (album or artist)
+# mode specifies if we need a list of artists (0) or albums (1)
+def get_name_choices(mode: int):
+    list_reference = [row[mode] for row in get_every_row(True)]
+    final_list = []
+    for row in list_reference:
+        final_list.append(Choice(name=str(row), value=str(row)))
+    return final_list
 
 
 # whenever the bot is ready, it'll send this
@@ -267,6 +300,7 @@ async def update(interaction: discord.Interaction):
 @app_commands.describe(artist="the name of the artist",
                        album="the name of the album",
                        rating="the rating of the album")
+@app_commands.choices(artist=get_name_choices(0), album=get_name_choices(1))
 async def add(interaction: discord.Interaction, artist: str, album: str, rating: float):
     try:
         await interaction.response.send_message(add_row(interaction.user.id, f"{artist}, {album}, {rating}"))
@@ -289,8 +323,9 @@ async def add_bulk(interaction: discord.Interaction, albums: str):
 
 # EDIT COMMAND
 @tree.command(name='edit', description='edit a rating on an album', guild=guild)
-@app_commands.describe(ranking=f"the ranking of the album you want to edit on your rankings (see albums-eps-of-2023)",
-                       rating="your new rating of the album")
+@app_commands.describe(ranking=f"the ranking of the album you want to edit on your rankings "
+                               f"(see albums-eps-of-2023 for rankings)",
+                       rating="your new rating of the album (0-10)")
 async def edit(interaction: discord.Interaction, ranking: int, rating: float):
     make_table(interaction.user.id)
     try:
@@ -315,37 +350,27 @@ async def remove(interaction: discord.Interaction, ranking: int):
 # STATS COMMAND
 @tree.command(name='stats', description='find out stats about an album', guild=guild)
 @app_commands.describe(title="the title of the artist or album you are trying to get stats for")
-async def stats(interaction: discord.Interaction, title: str):
+@app_commands.choices(title=get_name_choices(1))
+async def stats(interaction: discord.Interaction, title: Choice[str]):
     try:
         await interaction.response.send_message(get_album_stats(title))
     except Exception as error:
         await interaction.response.send_message(error)
 
 
-# DEBUG: FIND_OTHER
-@tree.command(name='find_other', description='TEST - given an album(artist), finds an artist(album) associated', guild=guild)
-async def find_other(interaction: discord.Interaction, title: str):
-    try:
-        await interaction.response.send_message(transform_readable(strip_names(title))[0])
-    except Exception as error:
-        await interaction.response.send_message(error)
-
-
 # DEBUG: SQLITE3
-@tree.command(name='sqlite3', description='DEBUG: FOR RUBY ONLY, to execute sql statements', guild=guild)
+@tree.command(name='sqlite3', description='DEBUG: FOR MODS ONLY, to execute sql statements', guild=guild)
 @app_commands.describe(command="the command to execute, be very careful about this")
+@app_commands.checks.has_role(config.MOD_ID)
 async def sqlite3(interaction: discord.Interaction, command: str):
-    if interaction.user.id == config.RUBY_ID:
+    try:
         cursor = conn.cursor()
-        try:
-            cursor.execute(command)
-            await interaction.response.send_message(content=cursor.fetchall())
-        except Exception as error:
-            await interaction.response.send_message(content=error)
-        finally:
-            cursor.close()
-    else:
-        await interaction.response.send_message(content="you are not ruby so you may not use this command")
+        cursor.execute(command)
+        await interaction.response.send_message(content=cursor.fetchall())
+    except Exception as error:
+        await interaction.response.send_message(content=error)
+    finally:
+        cursor.close()
 
 
 @client.event
