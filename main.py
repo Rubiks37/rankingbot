@@ -56,11 +56,13 @@ def table_exists(user_id):
 
 # makes a table for a user if it doesn't exist and inserts them into active users (if not exists is just for redundancy)
 def make_table(user_id):
+    cursor = conn.cursor()
     if not table_exists(user_id):
-        conn.execute(f'''CREATE TABLE IF NOT EXISTS users (user_ids INTEGER)''')
-        conn.execute(f'''INSERT INTO users (user_ids) VALUES ('{user_id}')''')
-        conn.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id}
+        cursor.execute(f'''CREATE TABLE IF NOT EXISTS users (user_ids INTEGER)''')
+        cursor.execute(f'''INSERT INTO users (user_ids) VALUES ('{user_id}')''')
+        cursor.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id}
         (artists TEXT, title TEXT, rating FLOAT)''')
+    return
 
 
 # gets the ranked list in order by the rating
@@ -119,6 +121,7 @@ async def display_rankings():
 
 # adds a row to a table for a given user
 def add_row(user_id, content):
+    cursor = conn.cursor()
     make_table(user_id)
     # split content and check for errors
     content = content.split(',')
@@ -130,9 +133,10 @@ def add_row(user_id, content):
             raise SyntaxError("error: one or more of your command parameters is empty")
     # strip the message of extraneous characters, add to the table
     content = [thing.strip() for thing in content]
-    conn.execute(f'''INSERT INTO user_data_{user_id} (artists, title, rating) 
+    cursor.execute(f'''INSERT INTO user_data_{user_id} (artists, title, rating) 
                  VALUES('{content[0]}', '{content[1]}', '{content[2]}')''')
     conn.commit()
+    cursor.close()
     return f"i successfully added {content[0]} - {content[1]} to your rankings"
 
 
@@ -175,13 +179,15 @@ def remove_row(user_id, index):
     make_table(user_id)
     rows = get_rows(user_id)
     index = int(index) - 1
+    cursor = conn.cursor()
     # prevent an index out of bound exception
     if len(rows) - 1 < index or index < 0:
         raise IndexError("error: an invalid index was entered (probably because it doesn't exist)")
-    affected = conn.execute(f"DELETE FROM user_data_{user_id} "
+    affected = cursor.execute(f"DELETE FROM user_data_{user_id} "
                             f"WHERE artists = ? AND title = ? AND rating = ?",
                             (rows[index][0], rows[index][1], rows[index][2]))
     conn.commit()
+    cursor.close()
     if affected is None:
         raise LookupError("error: no rows were deleted, idk why though")
     else:
@@ -228,7 +234,7 @@ def get_album_stats(content):
     title = strip_names(content)[0]
     row = transform_readable(title)
     if row is None:
-        raise Exception('no albums found matching the name ' + content)
+        raise LookupError('error: no albums found matching the name ' + content)
     ratings = get_album_ratings(row[1])
     num_ratings = len(ratings)
     mean = round(statistics.mean(ratings), 2)
@@ -329,14 +335,17 @@ async def find_other(interaction: discord.Interaction, title: str):
 @tree.command(name='sqlite3', description='DEBUG: FOR RUBY ONLY, to execute sql statements', guild=guild)
 @app_commands.describe(command="the command to execute, be very careful about this")
 async def sqlite3(interaction: discord.Interaction, command: str):
-    cursor = conn.cursor()
     if interaction.user.id == config.RUBY_ID:
+        cursor = conn.cursor()
         try:
-            await interaction.response.send_message(content=cursor.execute(command))
+            cursor.execute(command)
+            await interaction.response.send_message(content=cursor.fetchall())
         except Exception as error:
             await interaction.response.send_message(content=error)
+        finally:
+            cursor.close()
     else:
-        interaction.response.send_message(content="you are not ruby so you may not use this command")
+        await interaction.response.send_message(content="you are not ruby so you may not use this command")
 
 
 @client.event

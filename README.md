@@ -30,7 +30,7 @@ I am by no means good at programming, so this initial version is a very rough ve
 ---
 
 * /help command
-* UPLOAD 1.0.0 TO GITHUB
+* add an album changelog that could be changed
 * remove the references to me in case anyone else wants to use this for whatever reason
 * bug fix and release a patch if needed
 * add an undo feature
