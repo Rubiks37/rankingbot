@@ -2,8 +2,6 @@ import discord
 from discord import app_commands
 from discord.app_commands import Choice
 import sqlite3
-
-
 import config
 import statistics
 
@@ -114,7 +112,6 @@ def get_users():
     rows = cursor.fetchall()
     cursor.close()
     user_ids = [row[0] for row in rows]
-    print(user_ids)
     return user_ids
 
 
@@ -268,7 +265,7 @@ def get_album_stats(content):
     return final_string
 
 
-# returns part of a decorator that can be used to give choices to application commands (album or artist)
+# returns a list of choice objects that can be used to give choices to application commands (album or artist)
 # mode specifies if we need a list of artists (0) or albums (1)
 def get_name_choices(mode: int):
     list_reference = [row[mode] for row in get_every_row(True)]
@@ -276,6 +273,20 @@ def get_name_choices(mode: int):
     for row in list_reference:
         final_list.append(Choice(name=str(row), value=str(row)))
     return final_list
+
+
+# same as above, but it does artists with autocomplete
+async def get_artist_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    final_list = [row[0] for row in get_every_row(True)]
+    return [Choice(name=artist, value=artist)
+            for artist in final_list if strip_names(current)[0] in strip_names(artist)[0]]
+
+
+# same as above, but it does albums with autocomplete
+async def get_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    final_list = [row[1] for row in get_every_row(True)]
+    return [Choice(name=album, value=album)
+            for album in final_list if current.lower() in album.lower()]
 
 
 # whenever the bot is ready, it'll send this
@@ -300,7 +311,7 @@ async def update(interaction: discord.Interaction):
 @app_commands.describe(artist="the name of the artist",
                        album="the name of the album",
                        rating="the rating of the album")
-@app_commands.choices(artist=get_name_choices(0), album=get_name_choices(1))
+@app_commands.autocomplete(artist=get_artist_autocomplete, album=get_album_autocomplete)
 async def add(interaction: discord.Interaction, artist: str, album: str, rating: float):
     try:
         await interaction.response.send_message(add_row(interaction.user.id, f"{artist}, {album}, {rating}"))
