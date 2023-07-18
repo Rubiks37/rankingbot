@@ -1,0 +1,10 @@
+*.txt
+*.db
+
+.idea/
+venv/
+__pycache__/
+.vs/
+
+
+config.py
