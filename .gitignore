@@ -7,4 +7,6 @@ __pycache__/
 .vs/
 
 
-config.py
+/config.py
+/configMAIN.py
+/future_additions.py
