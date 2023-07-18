@@ -3,6 +3,7 @@
 ---
 
 This discord.py based bot utilizes sqlite3 to store album/ep rankings for each user.
+This could technically also be used for song rankings as well.
 
 ### Features
 
@@ -10,8 +11,9 @@ This discord.py based bot utilizes sqlite3 to store album/ep rankings for each u
 
 * Supports basic application commands
 * Add, remove, or edit current entries in a users list
-* Get basic statistics for a certain album
+* Get basic statistics for a certain album/ep
 * Display everyone's rankings in a channel, which updates whenever an update is performed
+* Autofill suggestions based on currently established albums/eps
 
 ### CONFIG
 
@@ -30,12 +32,10 @@ I am by no means good at programming, so this initial version is a very rough ve
 ---
 
 * /help command
-* add an album changelog that could be changed
+* add an album changelog that specifies what changes everyone has made to their album list recently (toggleable feature)
 * remove the references to me in case anyone else wants to use this for whatever reason
-* bug fix and release a patch if needed
 * add an undo feature
 * add a top albums feature
-* add autofill suggestions based on currently established albums/eps
 * add even more error handling
 * integrate with spotify api to get picture of albums as attachments for stat commands (cause it would be cool)
 * MORE STATS
