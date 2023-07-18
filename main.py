@@ -250,7 +250,10 @@ async def on_ready():
 # UPDATE COMMAND
 @tree.command(name="update", description="update the album rankings", guild=guild)
 async def update(interaction: discord.Interaction):
-    await interaction.response.send_message(await display_rankings())
+    try:
+        await interaction.response.send_message(await display_rankings())
+    except Exception as error:
+        await interaction.response.send_message(content=error)
 
 
 # ADD COMMAND (single adding only)
@@ -329,9 +332,9 @@ async def sqlite3(interaction: discord.Interaction, command: str):
     cursor = conn.cursor()
     if interaction.user.id == config.RUBY_ID:
         try:
-            interaction.response.send_message(content=cursor.execute(command))
+            await interaction.response.send_message(content=cursor.execute(command))
         except Exception as error:
-            interaction.response.send_message(content=error)
+            await interaction.response.send_message(content=error)
     else:
         interaction.response.send_message(content="you are not ruby so you may not use this command")
 
