@@ -118,6 +118,7 @@ def get_users():
 # Updates the rankings channel by deleting all messages then resending them
 async def display_rankings():
     conn.commit()
+    await tree.sync(guild=guild)
     channel = client.get_channel(config.RANKING_CHANNEL)
     users = get_users()
     final_message = ''
