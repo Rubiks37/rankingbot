@@ -245,7 +245,7 @@ def get_album_ratings(album_name):
 # we are only given an album or an artist, so we find the full formatted title using transform_readable
 # we can use those to get album rankings, and then run some simple statistics and print it (could add more statistics)
 def get_album_stats(content):
-    title = strip_names(content.value)[0]
+    title = strip_names(content)[0]
     row = transform_readable(title)
     if row is None:
         raise LookupError('error: no albums found matching the name \"' + content + '\"')
