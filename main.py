@@ -293,7 +293,9 @@ async def get_album_autocomplete_specific(interaction: discord.Interaction, curr
 # whenever the bot is ready, it'll log this
 @client.event
 async def on_ready():
-    await client.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="to your favourite music"))
+    await client.change_presence(activity=discord.Activity(
+        type=discord.ActivityType.listening, name="your favourite music"))
+
 
 # APPLICATION COMMAND SECTION
 # UPDATE COMMAND
@@ -386,8 +388,8 @@ async def sync(interaction: discord.Interaction):
 @app_commands.describe(command="the command to execute, be very careful about this")
 @app_commands.checks.has_role(config.MOD_ID)
 async def sqlite3(interaction: discord.Interaction, command: str):
+    cursor = conn.cursor()
     try:
-        cursor = conn.cursor()
         cursor.execute(command)
         await interaction.response.send_message(content=cursor.fetchall())
     except Exception as error:
