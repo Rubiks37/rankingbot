@@ -362,7 +362,6 @@ async def remove(interaction: discord.Interaction, album: str):
 @app_commands.describe(title="the title of the album you are trying to get stats for")
 @app_commands.autocomplete(title=get_album_autocomplete)
 async def stats(interaction: discord.Interaction, title: str):
-    await sync_commands()
     try:
         await interaction.response.send_message(get_album_stats(title))
     except Exception as error:
