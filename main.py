@@ -4,6 +4,7 @@ from discord.app_commands import Choice
 import sqlite3
 import config
 import statistics
+from spotify_integration import get_album
 
 # set up Discord Bot with read and write message privileges, but without mentioning privileges
 intents = discord.Intents.default()
@@ -27,7 +28,9 @@ changelog = True
 
 
 async def sync_commands():
+    # Sync global & guild only commands
     await tree.sync()
+    await tree.sync(guild=my_guild)
 
 # all the following functions will be needed to help make the app commands more readable and easier to follow
 
@@ -184,7 +187,6 @@ def edit_row(user_id, row, rating: float):
     make_table(user_id)
     # prevent an index out of bound exception
     # update rating value in corresponding row
-    print(row)
     affected = conn.execute(f"UPDATE user_data_{user_id} SET rating = {rating} "
                             f"WHERE artists = ? AND title = ? AND rating = ?", (row[0], row[1], row[2]))
     conn.commit()
@@ -233,12 +235,10 @@ def get_row(name, user_id=0):
 def get_album_ratings(album_name):
     album_name = strip_names(album_name)[0]
     ratings = []
-    print("looking for " + album_name + " across all rankings")
     output = get_every_row(unique=False)
     for row in output:
         if strip_names(row[1])[0] in album_name:
             ratings.append(row[2])
-    print(ratings)
     return ratings
 
 
@@ -280,7 +280,7 @@ async def get_artist_autocomplete(interaction: discord.Interaction, current: str
 async def get_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     final_list = [row[1] for row in get_every_row(True)]
     return [Choice(name=album, value=album)
-            for album in final_list if current.lower() in strip_names(album)[0]]
+            for album in final_list if strip_names(current)[0] in strip_names(album)[0]]
 
 
 # this does album autocomplete, but for a specific users list
@@ -293,8 +293,7 @@ async def get_album_autocomplete_specific(interaction: discord.Interaction, curr
 # whenever the bot is ready, it'll log this
 @client.event
 async def on_ready():
-    print('hi im here to help')
-
+    await client.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="to your favourite music"))
 
 # APPLICATION COMMAND SECTION
 # UPDATE COMMAND
@@ -363,7 +362,10 @@ async def remove(interaction: discord.Interaction, album: str):
 @app_commands.autocomplete(title=get_album_autocomplete)
 async def stats(interaction: discord.Interaction, title: str):
     try:
-        await interaction.response.send_message(get_album_stats(title))
+        album_cover = get_album(title, "")[3]
+        embed = discord.Embed(title=title, description=get_album_stats(title))
+        embed.set_image(url=album_cover)
+        await interaction.response.send_message(embed=embed)
     except Exception as error:
         await interaction.response.send_message(error)
 
