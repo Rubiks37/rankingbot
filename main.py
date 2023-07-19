@@ -27,6 +27,7 @@ changelog = True
 
 # all the following functions will be needed to help make the app commands more readable and easier to follow
 
+
 # there will be an error if a final message is over 2000 characters
 # this code will split it up
 def split_message(content):
@@ -91,7 +92,7 @@ def get_every_row(unique: bool):
             [final_rows.append(row[slice(0, 2)]) for row in rows
              if (strip_names(row[0])[0] or strip_names(row[1])[0]) not in strip_names(final_rows)[0]]
         else:
-            final_rows.append(rows)
+            [final_rows.append(row) for row in rows]
     return final_rows
 
 
@@ -145,28 +146,26 @@ def add_row(user_id, content):
     cursor = conn.cursor()
     make_table(user_id)
     # split content and check for errors
-    content = content.split(',')
     if len(content) != 3:
         raise SyntaxError("error: your message in incorrect format")
-    content[0] = content[0].strip('+add ')
-    for cont in content:
-        if cont is None:
+    for item in content:
+        if item is None:
             raise SyntaxError("error: one or more of your command parameters is empty")
     # strip the message of extraneous characters, add to the table
-    content = [thing.strip() for thing in content]
     cursor.execute(f'''INSERT INTO user_data_{user_id} (artists, title, rating) 
-                 VALUES('{content[0]}', '{content[1]}', '{content[2]}')''')
+                 VALUES('{content[0].strip()}', '{content[1].strip()}', '{content[2]}')''')
     conn.commit()
     cursor.close()
     return f"i successfully added {content[0]} - {content[1]} to your rankings"
 
 
 # this just splits a message up by new lines and calls add_row until there are no more new lines
+# KNOWN BUG (not sure how to fix though) - artists/albums with commas cannot be bulk added, need to be single added
 def add_row_bulk(user_id, content):
     make_table(user_id)
-    adds = content.split("\n")
+    rows = content.split("\n")
     # check for incorrect formatting/blank entries
-    for i, row in enumerate(adds):
+    for i, row in enumerate(rows):
         if len(row) != 3:
             raise SyntaxError(f"incorrect formatting (row {i} did not have 3 entries")
         for item in row.split(',').strip():
@@ -174,7 +173,7 @@ def add_row_bulk(user_id, content):
                 raise SyntaxError(f"incorrect formatting (row {i} has a blank entry")
         # adds row if all checks succeed
         add_row(user_id, row)
-    return f"i successfully added {len(adds)} albums to your rankings"
+    return f"i successfully added {len(rows)} albums to your rankings"
 
 
 # edits a row in a given table
@@ -220,13 +219,10 @@ def remove_row(user_id, index):
 # if it finds one, it will return the full row that it was on. NEEDS TO BE IMPROVED ON LATER
 def transform_readable(name):
     name = strip_names(name)[0]
-    users = get_users()
-    for user_id in users:
-        output = get_rows(user_id)
-        for row in output:
-            for item in row:
-                if strip_names(item)[0] == name:
-                    return row
+    for row in get_every_row(True):
+        for item in row:
+            if strip_names(item)[0] == name:
+                return row
     return None
 
 
@@ -235,16 +231,13 @@ def transform_readable(name):
 # if true, adds the rating associated to a list and returns the list
 def get_album_ratings(album_name):
     album_name = strip_names(album_name)[0]
-    users = get_users()
     ratings = []
-    for user_id in users:
-        print("looking for " + album_name + " from " + str(user_id))
-        output = get_rows(user_id)
-        for row in output:
-            if strip_names(row[1])[0] in album_name:
-                print("found a rating")
-                ratings.append(row[2])
-                break
+    print("looking for " + album_name + " across all rankings")
+    output = get_every_row(unique=False)
+    for row in output:
+        if strip_names(row[1])[0] in album_name:
+            print("found a rating")
+            ratings.append(row[2])
     print(ratings)
     return ratings
 
@@ -252,7 +245,7 @@ def get_album_ratings(album_name):
 # we are only given an album or an artist, so we find the full formatted title using transform_readable
 # we can use those to get album rankings, and then run some simple statistics and print it (could add more statistics)
 def get_album_stats(content):
-    title = strip_names(content)[0]
+    title = strip_names(content.value)[0]
     row = transform_readable(title)
     if row is None:
         raise LookupError('error: no albums found matching the name \"' + content + '\"')
@@ -290,10 +283,16 @@ async def get_album_autocomplete(interaction: discord.Interaction, current: str)
             for album in final_list if current.lower() in album.lower()]
 
 
-# whenever the bot is ready, it'll send this
+# this does index autocomplete, but it doesnt adjust to current like the other autocompletes do, (but its fine)
+async def get_index_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
+    user_id = interaction.user.id
+    return [Choice(name=str(index), value=index)
+            for index in range(0, len(get_rows(user_id)))]
+
+
+# whenever the bot is ready, it'll log this
 @client.event
 async def on_ready():
-    await tree.sync(guild=guild)
     print('hi im here to help')
 
 
@@ -315,7 +314,7 @@ async def update(interaction: discord.Interaction):
 @app_commands.autocomplete(artist=get_artist_autocomplete, album=get_album_autocomplete)
 async def add(interaction: discord.Interaction, artist: str, album: str, rating: float):
     try:
-        await interaction.response.send_message(add_row(interaction.user.id, f"{artist}, {album}, {rating}"))
+        await interaction.response.send_message(add_row(interaction.user.id, [artist, album, rating]))
         await display_rankings()
     except Exception as error:
         await interaction.response.send_message(content=error)
@@ -338,6 +337,7 @@ async def add_bulk(interaction: discord.Interaction, albums: str):
 @app_commands.describe(ranking=f"the ranking of the album you want to edit on your rankings "
                                f"(see albums-eps-of-2023 for rankings)",
                        rating="your new rating of the album (0-10)")
+@app_commands.autocomplete(ranking=get_index_autocomplete)
 async def edit(interaction: discord.Interaction, ranking: int, rating: float):
     make_table(interaction.user.id)
     try:
@@ -350,6 +350,7 @@ async def edit(interaction: discord.Interaction, ranking: int, rating: float):
 # REMOVE COMMAND
 @tree.command(name="remove", description="remove an album from your ranking", guild=guild)
 @app_commands.describe(ranking="the ranking of the album you want to remove on your rankings (see albums-eps-of-2023)")
+@app_commands.autocomplete(ranking=get_index_autocomplete)
 async def remove(interaction: discord.Interaction, ranking: int):
     make_table(interaction.user.id)
     try:
@@ -361,9 +362,9 @@ async def remove(interaction: discord.Interaction, ranking: int):
 
 # STATS COMMAND
 @tree.command(name='stats', description='find out stats about an album', guild=guild)
-@app_commands.describe(title="the title of the artist or album you are trying to get stats for")
-@app_commands.choices(title=get_name_choices(1))
-async def stats(interaction: discord.Interaction, title: Choice[str]):
+@app_commands.describe(title="the title of the album you are trying to get stats for")
+@app_commands.autocomplete(title=get_album_autocomplete)
+async def stats(interaction: discord.Interaction, title: str):
     try:
         await interaction.response.send_message(get_album_stats(title))
     except Exception as error:
