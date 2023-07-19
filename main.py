@@ -293,7 +293,6 @@ async def get_album_autocomplete_specific(interaction: discord.Interaction, curr
 # whenever the bot is ready, it'll log this
 @client.event
 async def on_ready():
-    await sync_commands()
     print('hi im here to help')
 
 
