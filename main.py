@@ -142,7 +142,7 @@ async def display_rankings():
 
 
 # adds a row to a table for a given user
-def add_row(user_id, content):
+def add_row(user_id, content: list):
     cursor = conn.cursor()
     make_table(user_id)
     # split content and check for errors
@@ -177,49 +177,47 @@ def add_row_bulk(user_id, content):
 
 
 # edits a row in a given table
-def edit_row(user_id, ranking_str, rating_str):
+def edit_row(user_id, row, rating: float):
     make_table(user_id)
-    rows = get_rows(user_id)
-    # assign each variable to the row in rankings
-    index = int(ranking_str) - 1
-    rating = float(rating_str)
     # prevent an index out of bound exception
-    if len(rows) - 1 < index or index < 0:
-        raise IndexError("error: an invalid index was entered (probably because it doesn't exist)")
     # update rating value in corresponding row
-    conn.execute(f"UPDATE user_data_{user_id} SET rating = {rating} "
-                 f"WHERE artists = ? AND title = ? AND rating = ?",
-                 (rows[index][0], rows[index][1], rows[index][2]))
+    print(row)
+    affected = conn.execute(f"UPDATE user_data_{user_id} SET rating = {rating} "
+                            f"WHERE artists = ? AND title = ? AND rating = ?", (row[0], row[1], row[2]))
     conn.commit()
-    return f"i successfully edited {rows[index][0]} - {rows[index][1]} to a {rating}/10.0"
+    if affected is None:
+        raise LookupError("error: no rows were deleted, idk why though")
+    else:
+        return f"i successfully edited {row[0]} - {row[1]} to a {rating}/10.0"
 
 
 # removes a row from a certain users table
-def remove_row(user_id, index):
+def remove_row(user_id, row):
     make_table(user_id)
-    rows = get_rows(user_id)
-    index = int(index) - 1
     cursor = conn.cursor()
     # prevent an index out of bound exception
-    if len(rows) - 1 < index or index < 0:
-        raise IndexError("error: an invalid index was entered (probably because it doesn't exist)")
     affected = cursor.execute(f"DELETE FROM user_data_{user_id} "
                               f"WHERE artists = ? AND title = ? AND rating = ?",
-                              (rows[index][0], rows[index][1], rows[index][2]))
+                              (row[0], row[1], row[2]))
     conn.commit()
     cursor.close()
     if affected is None:
         raise LookupError("error: no rows were deleted, idk why though")
     else:
-        return f"i successfully deleted {rows[index][0]} - {rows[index][1]} from your list"
+        return f"i successfully deleted {row[0]} - {row[1]} from your list"
 
 
 # this takes an input from strip_names, usually an album name or an artist name
-# and tries to find a human-readable name in one of the lists.
+# and tries to find a name in one of the lists.
 # if it finds one, it will return the full row that it was on. NEEDS TO BE IMPROVED ON LATER
-def transform_readable(name):
+# also can take a user_id to only search rows specific to that user
+def get_row(name, user_id=0):
+    if user_id == 0:
+        rows = get_every_row(True)
+    else:
+        rows = get_rows(user_id)
     name = strip_names(name)[0]
-    for row in get_every_row(True):
+    for row in rows:
         for item in row:
             if strip_names(item)[0] == name:
                 return row
@@ -236,17 +234,16 @@ def get_album_ratings(album_name):
     output = get_every_row(unique=False)
     for row in output:
         if strip_names(row[1])[0] in album_name:
-            print("found a rating")
             ratings.append(row[2])
     print(ratings)
     return ratings
 
 
-# we are only given an album or an artist, so we find the full formatted title using transform_readable
+# we are only given an album or an artist, so we find the full formatted title using get_row
 # we can use those to get album rankings, and then run some simple statistics and print it (could add more statistics)
 def get_album_stats(content):
     title = strip_names(content)[0]
-    row = transform_readable(title)
+    row = get_row(title)
     if row is None:
         raise LookupError('error: no albums found matching the name \"' + content + '\"')
     ratings = get_album_ratings(row[1])
@@ -271,7 +268,7 @@ def get_name_choices(mode: int):
 
 # same as above, but it does artists with autocomplete
 async def get_artist_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [row[0] for row in get_every_row(True)]
+    final_list = [row[1] for row in get_every_row(True)]
     return [Choice(name=artist, value=artist)
             for artist in final_list if strip_names(current)[0] in strip_names(artist)[0]]
 
@@ -283,11 +280,11 @@ async def get_album_autocomplete(interaction: discord.Interaction, current: str)
             for album in final_list if current.lower() in album.lower()]
 
 
-# this does index autocomplete, but it doesnt adjust to current like the other autocompletes do, (but its fine)
-async def get_index_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
-    user_id = interaction.user.id
-    return [Choice(name=str(index), value=index)
-            for index in range(0, len(get_rows(user_id)))]
+# this does album autocomplete, but for a specific users list
+async def get_album_autocomplete_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    final_list = [row[1] for row in get_rows(interaction.user.id)]
+    return [Choice(name=album, value=album)
+            for album in final_list if current.lower() in album.lower()]
 
 
 # whenever the bot is ready, it'll log this
@@ -334,14 +331,12 @@ async def add_bulk(interaction: discord.Interaction, albums: str):
 
 # EDIT COMMAND
 @tree.command(name='edit', description='edit a rating on an album', guild=guild)
-@app_commands.describe(ranking=f"the ranking of the album you want to edit on your rankings "
-                               f"(see albums-eps-of-2023 for rankings)",
+@app_commands.describe(album="the name of the album you wish to edit",
                        rating="your new rating of the album (0-10)")
-@app_commands.autocomplete(ranking=get_index_autocomplete)
-async def edit(interaction: discord.Interaction, ranking: int, rating: float):
-    make_table(interaction.user.id)
+@app_commands.autocomplete(album=get_album_autocomplete_specific)
+async def edit(interaction: discord.Interaction, album: str, rating: float):
     try:
-        await interaction.response.send_message(edit_row(interaction.user.id, ranking, rating))
+        await interaction.response.send_message(edit_row(interaction.user.id, get_row(album, interaction.user.id), rating))
         await display_rankings()
     except Exception as error:
         await interaction.response.send_message(content=error)
@@ -349,12 +344,11 @@ async def edit(interaction: discord.Interaction, ranking: int, rating: float):
 
 # REMOVE COMMAND
 @tree.command(name="remove", description="remove an album from your ranking", guild=guild)
-@app_commands.describe(ranking="the ranking of the album you want to remove on your rankings (see albums-eps-of-2023)")
-@app_commands.autocomplete(ranking=get_index_autocomplete)
-async def remove(interaction: discord.Interaction, ranking: int):
-    make_table(interaction.user.id)
+@app_commands.describe(album="the name of the album you want to remove")
+@app_commands.autocomplete(album=get_album_autocomplete_specific)
+async def remove(interaction: discord.Interaction, album: str):
     try:
-        await interaction.response.send_message(remove_row(interaction.user.id, ranking))
+        await interaction.response.send_message(remove_row(interaction.user.id, get_row(album, interaction.user.id)))
         await display_rankings()
     except Exception as error:
         await interaction.response.send_message(error)
