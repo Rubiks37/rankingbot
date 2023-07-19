@@ -271,7 +271,7 @@ def get_name_choices(mode: int):
 
 # same as above, but it does artists with autocomplete
 async def get_artist_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [row[1] for row in get_every_row(True)]
+    final_list = [row[0] for row in get_every_row(True)]
     return [Choice(name=artist, value=artist)
             for artist in final_list if strip_names(current)[0] in strip_names(artist)[0]]
 
@@ -280,7 +280,7 @@ async def get_artist_autocomplete(interaction: discord.Interaction, current: str
 async def get_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     final_list = [row[1] for row in get_every_row(True)]
     return [Choice(name=album, value=album)
-            for album in final_list if current.lower() in album.lower()]
+            for album in final_list if current.lower() in strip_names(album)[0]]
 
 
 # this does album autocomplete, but for a specific users list
