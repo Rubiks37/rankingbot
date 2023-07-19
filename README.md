@@ -56,13 +56,19 @@ I am by no means good at programming, so this initial version is a very rough ve
 
 You can create a spotify client id / secret here: https://developer.spotify.com/dashboard
 
+For redirect url, you should use http://localhost/callback
+
 Go to https://accounts.spotify.com/authorize?client_id={SPOTIFY_CLIENT_ID}&response_type=code&scope=playlist-modify-public,playlist-modify-private,playlist-read-private,playlist-read-collaborative,user-library-modify,user-library-read&redirect_uri=http://localhost/callback/
+
+Make sure to substitute {SPOTIFY_CLIENT_ID} for the id obtained from the developer dashboard
 
 You'll be redirected to a localhost page (that your browser can't find). Save ?code={CODE} from the URL
 
-Take {SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET} => Convert to Base64 (e.g. https://www.base64encode.org/)
+Take your SPOTIFY_CLIENT_ID:SPOTIFY_CLIENT_SECRET => Convert to Base64 (e.g. https://www.base64encode.org/)
 
 curl -X POST -H "Content-Type: application/x-www-form-urlencoded" -H "Authorization: Basic {BASE64}" -d "grant_type=authorization_code&redirect_uri=http://localhost/callback/&code={CODE}" https://accounts.spotify.com/api/token
+
+Again, making sure to substitute {BASE64} and {CODE} in for the values obtained earlier
 
 Save refresh token
 
@@ -72,6 +78,6 @@ Save refresh token
 - python -m venv venv
 - Activate venv (Windows: .\venv\Scripts\activate.ps1; Ubuntu: source ./venv/Scripts/activate)
 - git clone https://github.com/mental32/spotify.py spotify_py
-- Copy the folder "spotify" from spotify_py one layer up & delete the spotify_py folder
 - cd spotify_py
 - pip install -U .
+- Copy the folder "spotify" from spotify_py one layer up & delete the spotify_py folder
