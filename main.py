@@ -119,7 +119,6 @@ def get_users():
 # Updates the rankings channel by deleting all messages then resending them
 async def display_rankings():
     conn.commit()
-    await tree.sync(guild=guild)
     channel = client.get_channel(config.RANKING_CHANNEL)
     users = get_users()
     final_message = ''
@@ -290,6 +289,7 @@ async def get_album_autocomplete_specific(interaction: discord.Interaction, curr
 # whenever the bot is ready, it'll log this
 @client.event
 async def on_ready():
+    await tree.sync(guild=guild)
     print('hi im here to help')
 
 
@@ -363,6 +363,16 @@ async def stats(interaction: discord.Interaction, title: str):
         await interaction.response.send_message(get_album_stats(title))
     except Exception as error:
         await interaction.response.send_message(error)
+
+
+@tree.command(name='sync', description='MOD ONLY: syncs the application commands')
+@app_commands.checks.has_role(config.MOD_ID)
+async def sync(interaction: discord.Interaction):
+    try:
+        await tree.sync(guild=guild)
+        await interaction.response.send_message(content="sync successful")
+    except Exception as error:
+        await interaction.response.send_message(content=error)
 
 
 # DEBUG: SQLITE3
