@@ -15,7 +15,7 @@ client = discord.Client(intents=intents, allowed_mentions=allowed_mentions)
 tree = app_commands.CommandTree(client)
 
 # sets up guild/channel/permissions objects for later use
-guild = discord.Object(config.GUILD)
+my_guild = discord.Object(config.GUILD)
 
 # connect to SQLite3 Database (Just a server file)
 conn = sqlite3.connect('rankings.db')
@@ -24,6 +24,10 @@ conn = sqlite3.connect('rankings.db')
 # boolean variable that will determine if the album changelog is active
 # this is a future feature that i don't care enough to implement now
 changelog = True
+
+
+async def sync_commands():
+    await tree.sync()
 
 # all the following functions will be needed to help make the app commands more readable and easier to follow
 
@@ -289,13 +293,13 @@ async def get_album_autocomplete_specific(interaction: discord.Interaction, curr
 # whenever the bot is ready, it'll log this
 @client.event
 async def on_ready():
-    await tree.sync(guild=guild)
+    await sync_commands()
     print('hi im here to help')
 
 
 # APPLICATION COMMAND SECTION
 # UPDATE COMMAND
-@tree.command(name="update", description="update the album rankings", guild=guild)
+@tree.command(name="update", description="update the album rankings", guild=my_guild)
 async def update(interaction: discord.Interaction):
     try:
         await interaction.response.send_message(await display_rankings())
@@ -304,7 +308,7 @@ async def update(interaction: discord.Interaction):
 
 
 # ADD COMMAND (single adding only)
-@tree.command(name='add', description='add an album to your rankings', guild=guild)
+@tree.command(name='add', description='add an album to your rankings', guild=my_guild)
 @app_commands.describe(artist="the name of the artist",
                        album="the name of the album",
                        rating="the rating of the album")
@@ -318,7 +322,7 @@ async def add(interaction: discord.Interaction, artist: str, album: str, rating:
 
 
 # BULK ADD COMMAND
-@tree.command(name='add_bulk', description='add multiple albums to your rankings', guild=guild)
+@tree.command(name='add_bulk', description='add multiple albums to your rankings', guild=my_guild)
 @app_commands.describe(albums="the full list of albums you want to add. it should be in this format"
                               "\nArtist, Album Title, Rating (Next Line)")
 async def add_bulk(interaction: discord.Interaction, albums: str):
@@ -330,7 +334,7 @@ async def add_bulk(interaction: discord.Interaction, albums: str):
 
 
 # EDIT COMMAND
-@tree.command(name='edit', description='edit a rating on an album', guild=guild)
+@tree.command(name='edit', description='edit a rating on an album', guild=my_guild)
 @app_commands.describe(album="the name of the album you wish to edit",
                        rating="your new rating of the album (0-10)")
 @app_commands.autocomplete(album=get_album_autocomplete_specific)
@@ -343,7 +347,7 @@ async def edit(interaction: discord.Interaction, album: str, rating: float):
 
 
 # REMOVE COMMAND
-@tree.command(name="remove", description="remove an album from your ranking", guild=guild)
+@tree.command(name="remove", description="remove an album from your ranking", guild=my_guild)
 @app_commands.describe(album="the name of the album you want to remove")
 @app_commands.autocomplete(album=get_album_autocomplete_specific)
 async def remove(interaction: discord.Interaction, album: str):
@@ -355,10 +359,11 @@ async def remove(interaction: discord.Interaction, album: str):
 
 
 # STATS COMMAND
-@tree.command(name='stats', description='find out stats about an album', guild=guild)
+@tree.command(name='stats', description='find out stats about an album', guild=my_guild)
 @app_commands.describe(title="the title of the album you are trying to get stats for")
 @app_commands.autocomplete(title=get_album_autocomplete)
 async def stats(interaction: discord.Interaction, title: str):
+    await sync_commands()
     try:
         await interaction.response.send_message(get_album_stats(title))
     except Exception as error:
@@ -369,14 +374,15 @@ async def stats(interaction: discord.Interaction, title: str):
 @app_commands.checks.has_role(config.MOD_ID)
 async def sync(interaction: discord.Interaction):
     try:
-        await tree.sync(guild=guild)
-        await interaction.response.send_message(content="sync successful")
+        await interaction.response.defer()
+        await sync_commands()
+        await interaction.followup.send(content="sync successful")
     except Exception as error:
-        await interaction.response.send_message(content=error)
+        await interaction.followup.send(content=error)
 
 
 # DEBUG: SQLITE3
-@tree.command(name='sqlite3', description='DEBUG: FOR MODS ONLY, to execute sql statements', guild=guild)
+@tree.command(name='sqlite3', description='DEBUG: FOR MODS ONLY, to execute sql statements', guild=my_guild)
 @app_commands.describe(command="the command to execute, be very careful about this")
 @app_commands.checks.has_role(config.MOD_ID)
 async def sqlite3(interaction: discord.Interaction, command: str):
