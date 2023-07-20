@@ -40,7 +40,7 @@ I am by no means good at programming, so this initial version is a very rough ve
 ### To add list in the future
 
 ---
-
+* fix the issue of having multiple album/eps of the same name in the database (actively being worked on but it's a headache to fix), should be done tomorrow?
 * /help command
 * add an album changelog that specifies what changes everyone has made to their album list recently (toggleable feature)
 * add an undo feature
