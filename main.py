@@ -6,7 +6,7 @@ from discord.app_commands import Choice
 import sqlite3
 import config
 import statistics
-from spotify_integration import get_album, spotify_close_conn
+from spotify_integration import get_album, spotify_close_conn, search_album
 
 # set up Discord Bot with read and write message privileges, but without mentioning privileges
 intents = discord.Intents.default()
@@ -366,17 +366,7 @@ def get_album_stats(album, artist=None):
 
 
 # AUTOCOMPLETE AND CHOICES SECTION-----------------------------------------------------------------------------------
-# returns a list of choice objects that can be used to give choices to application commands (album or artist)
-# mode specifies if we need a list of artists (0) or albums (1)
-def get_name_choices(mode: int):
-    list_reference = [row[mode] for row in get_all_ranking_rows(True)]
-    final_list = []
-    for row in list_reference:
-        final_list.append(Choice(name=str(row), value=str(row)))
-    return final_list
-
-
-# same as above, but it does artists with autocomplete
+# gets a list of artists in album_master and returns a list of choices for use in autocomplete
 async def get_artist_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     final_list = [row[0] for row in get_album_master()]
     return [Choice(name=artist, value=artist)
@@ -390,25 +380,18 @@ async def get_album_autocomplete(interaction: discord.Interaction, current: str)
             for album in final_list if strip_names(current)[0] in strip_names(album)[0]]
 
 
-# gets a formatted list of choices of artist - album
+# gets a formatted list of choices of artist - album using spotify search
+async def get_spotify_artist_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    results = search_album(current)
+    return [Choice(name=f"{entry.artists[0].name} - {entry.name}",
+                   value=f"{entry.artists[0].name} ----- {entry.name}") for entry in results]
+
+
+# gets a formatted list of choices of artist - album using album_master
 async def get_artist_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [f"{row[0]} - {row[1]}" for row in get_album_master()]
-    return [Choice(name=entry, value=entry)
-            for entry in final_list if current.lower() in entry.lower()]
-
-
-# this does album autocomplete, but for a specific users list
-async def get_album_autocomplete_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [row[1] for row in get_rows_from_user(interaction.user.id)]
-    return [Choice(name=album, value=album)
-            for album in final_list if current.lower() in album.lower()]
-
-
-# same as above, but with artist
-async def get_artist_autocomplete_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [row[0] for row in get_rows_from_user(interaction.user.id)]
-    return [Choice(name=artist, value=artist)
-            for artist in final_list if current.lower() in artist.lower()]
+    final_list = [[f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}"] for row in get_album_master()]
+    return [Choice(name=entry[0], value=entry[1])
+            for entry in final_list if current.lower() in entry[0].lower()]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
@@ -436,14 +419,29 @@ async def update(interaction: discord.Interaction):
         await interaction.response.send_message(content=error)
 
 
-# ADD COMMAND - adds an album to a users ranking
-@tree.command(name='add', description='add an album to your rankings', guild=my_guild)
+# ADDMANUAL COMMAND - adds an album to a users ranking with no search
+@tree.command(name='addmanual', description='add an album to your rankings', guild=my_guild)
 @app_commands.describe(artist="the name of the artist",
                        album="the name of the album",
                        rating="the rating of the album")
 @app_commands.autocomplete(artist=get_artist_autocomplete, album=get_album_autocomplete)
-async def add(interaction: discord.Interaction, artist: str, album: str, rating: float):
+async def addmanual(interaction: discord.Interaction, artist: str, album: str, rating: float):
     try:
+        await interaction.response.send_message(
+            await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
+        await display_rankings()
+    except Exception as error:
+        traceback.print_exc()
+        await interaction.response.send_message(content=error)
+
+
+# ADD COMMAND - uses spotify + autocomplete to find albums
+@tree.command(name='add', description='add an album to your rankings with the help of spotify search', guild=my_guild)
+@app_commands.describe(searchkeywords="type in keywords for your search here")
+@app_commands.autocomplete(searchkeywords=get_spotify_artist_album_autocomplete)
+async def add(interaction: discord.Interaction, searchkeywords: str, rating: float):
+    try:
+        artist, album = [enter.strip() for enter in searchkeywords.split("-----")]
         await interaction.response.send_message(
             await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
         await display_rankings()
@@ -499,10 +497,10 @@ async def remove(interaction: discord.Interaction, entry: str):
 # COVER COMMAND - displays the cover of the album
 @tree.command(name="cover", description="displays the cover of an album", guild=my_guild)
 @app_commands.describe(entry="the album - artist you want to see the cover of (see autocomplete)")
-@app_commands.autocomplete(entry=get_artist_album_autocomplete)
+@app_commands.autocomplete(entry=get_spotify_artist_album_autocomplete)
 async def cover(interaction: discord.Interaction, entry: str):
     try:
-        artist, album = [enter.strip() for enter in entry.split("-")]
+        artist, album = [enter.strip() for enter in entry.split("-----")]
         row = get_album_master_row(album=album, artist=artist)
         if row is None:
             row = get_album(artist, album)
@@ -520,7 +518,7 @@ async def cover(interaction: discord.Interaction, entry: str):
 @app_commands.autocomplete(entry=get_artist_album_autocomplete)
 async def stats(interaction: discord.Interaction, entry: str):
     try:
-        artist, album = [enter.strip() for enter in entry.split("-")]
+        artist, album = [enter.strip() for enter in entry.split("-----")]
         row = get_album_master_row(album=album, artist=artist)
         if row is None:
             raise ValueError("error: you cannot get stats for an album that is not ranked by anyone")
