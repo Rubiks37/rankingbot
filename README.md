@@ -31,7 +31,11 @@ I am by no means good at programming, so this initial version is a very rough ve
 ### Recent Additions, see all changes in commits (most recent at top)
 
 ---
-
+* fix the issue of having multiple album/eps of the same name in the database, it should be much more friendly to that
+* added album_master, which caches urls from spotify api and also allows for less stupidness when getting album names for all commands that require it
+* made so many methods a lot less stupid
+* added printing traceback, which should help me if we break something while the bot is live on the server
+* added /cover
 * added autocomplete to edit/delete commands
 * switched add choices to be autocompletes and added some methods to support
 * added sync to /update, so i dont get rate limited whenever i debug
@@ -40,7 +44,6 @@ I am by no means good at programming, so this initial version is a very rough ve
 ### To add list in the future
 
 ---
-* fix the issue of having multiple album/eps of the same name in the database (actively being worked on but it's a headache to fix), should be done tomorrow?
 * /help command
 * add an album changelog that specifies what changes everyone has made to their album list recently (toggleable feature)
 * add an undo feature
