@@ -82,15 +82,13 @@ def make_table(user_id):
     if not table_exists(user_id):
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS users (user_ids INTEGER)''')
         cursor.execute(f'''INSERT INTO users (user_ids) VALUES ('{user_id}')''')
-        cursor.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id}
-        (artists TEXT, title TEXT, rating FLOAT)''')
+        cursor.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id} (artists TEXT, title TEXT, rating FLOAT)''')
     return
 
 
 def make_album_master():
     cursor = conn.cursor()
-    cursor.execute(f'''CREATE TABLE IF NOT EXISTS album_master 
-    (artist TEXT, album TEXT, id TEXT, year INTEGER, image TEXT)''')
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS album_master (artist TEXT, album TEXT, id TEXT, year INTEGER, image TEXT)''')
     cursor.close()
     return
 
@@ -108,8 +106,7 @@ async def add_to_album_master(artist: str, album: str):
     if get_album_master_row(album=row[1], artist=row[2], abort_early=True) is not None:
         return None
     year = row[3].split('-')[0]
-    cursor.execute(f'''INSERT INTO album_master (artist, album, id, year, image) 
-    VALUES ('{row[2]}', '{row[1]}', '{row[0]}', '{year}', '{row[4]}')''')
+    cursor.execute(f'''INSERT INTO album_master (artist, album, id, year, image) VALUES ('{row[2]}', '{row[1]}', '{row[0]}', '{year}', '{row[4]}')''')
     if cursor.rowcount < 1:
         raise LookupError("error: no rows were added, huh why what how???")
     cursor.close()
@@ -182,7 +179,7 @@ async def update_album_master():
 # gets a users ranked list in order by the rating
 def get_rows_from_user(user_id):
     cursor = conn.cursor()
-    cursor.execute(f"SELECT * FROM user_data_{user_id} ORDER BY rating DESC")
+    cursor.execute(f'''SELECT * FROM user_data_{user_id} ORDER BY rating DESC''')
     rows = cursor.fetchall()
     cursor.close()
     return rows
@@ -215,7 +212,7 @@ def get_rankings(user_id):
 # looks through the table of users and generates a list of them
 def get_users():
     cursor = conn.cursor()
-    cursor.execute(f"SELECT * FROM users")
+    cursor.execute(f'''SELECT * FROM users''')
     rows = cursor.fetchall()
     cursor.close()
     user_ids = [row[0] for row in rows]
@@ -257,8 +254,7 @@ async def add_row(user_id, artist: str, album: str, rating: float):
     await add_to_album_master(artist=artist, album=album)
     row = get_album_master_row(artist=artist, album=album)
     # strip the message of extraneous characters, add to the table
-    cursor.execute(f'''INSERT INTO user_data_{user_id} (artists, title, rating) 
-                 VALUES('{row[0]}', '{row[1]}', '{rating}')''')
+    cursor.execute(f'''INSERT INTO user_data_{user_id} (artists, title, rating) VALUES('{row[0]}', '{row[1]}', '{rating}')''')
     if cursor.rowcount < 1:
         raise LookupError("error: no rows were added, which is confusing idk why that happened")
     conn.commit()
@@ -290,8 +286,7 @@ def edit_row(user_id, row, rating: float):
     # prevent an index out of bound exception
     # update rating value in corresponding row
     cursor = conn.cursor()
-    cursor.execute(f"UPDATE user_data_{user_id} SET rating = {rating} "
-                   f"WHERE artists = ? AND title = ?", (row[0], row[1]))
+    cursor.execute(f'''UPDATE user_data_{user_id} SET rating = {rating} WHERE artists = ? AND title = ?''', (row[0], row[1]))
     if cursor.rowcount < 1:
         raise LookupError("error: no rows were edited, which is confusing idk why that happened")
     conn.commit()
@@ -303,7 +298,7 @@ async def remove_row(user_id, row):
     make_table(user_id)
     cursor = conn.cursor()
     # prevent an index out of bound exception
-    affected = cursor.execute(f"DELETE FROM user_data_{user_id} "f"WHERE artists = ? AND title = ?",(row[0], row[1]))
+    cursor.execute(f"DELETE FROM user_data_{user_id} "f"WHERE artists = ? AND title = ?", (row[0], row[1]))
     conn.commit()
     cursor.close()
     if cursor.rowcount < 1:
