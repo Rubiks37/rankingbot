@@ -506,6 +506,8 @@ async def remove(interaction: discord.Interaction, entry: str):
 @app_commands.autocomplete(entry=get_spotify_artist_album_autocomplete)
 async def cover(interaction: discord.Interaction, entry: str):
     try:
+        if len(entry.split("-----")) != 2:
+            raise ValueError("error: improper formatting, please click on an autocomplete option")
         artist, album = [enter.strip() for enter in entry.split("-----")]
         row = get_album_master_row(album=album, artist=artist)
         if row is None:
@@ -524,6 +526,8 @@ async def cover(interaction: discord.Interaction, entry: str):
 @app_commands.autocomplete(entry=get_artist_album_autocomplete)
 async def stats(interaction: discord.Interaction, entry: str):
     try:
+        if len(entry.split("-----")) != 2:
+            raise ValueError("error: improper formatting, please click on an autocomplete option")
         artist, album = [enter.strip() for enter in entry.split("-----")]
         row = get_album_master_row(album=album, artist=artist)
         if row is None:
