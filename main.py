@@ -290,7 +290,7 @@ def edit_row(user_id, row, rating: float):
     # update rating value in corresponding row
     cursor = conn.cursor()
     cursor.execute(f'''UPDATE user_data_{user_id} SET rating = {rating}'''
-                   f'''WHERE artists = ? AND title = ?''', (row[0], row[1]))
+                   f''' WHERE artists = ? AND title = ?''', (row[0], row[1]))
     if cursor.rowcount < 1:
         raise LookupError("error: no rows were edited, which is confusing idk why that happened")
     conn.commit()
@@ -443,7 +443,7 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
     try:
         artist, album = [enter.strip() for enter in searchkeywords.split("-----")]
         await interaction.response.send_message(
-            await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
+        await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
         await display_rankings()
     except Exception as error:
         traceback.print_exc()
