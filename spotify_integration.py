@@ -12,6 +12,11 @@ def get_album(artist_name, album_name):
     return album.id, album.name, album.artists[0].name, album.release_date, album.images[0].url
 
 
+def search_album(current):
+    results = spotifyClient.search(f"{current}", types=["album"], limit=10)
+    return results[2]
+
+
 def spotify_close_conn():
     spotifyUser.close()
     spotifyClient.close()
