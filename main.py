@@ -441,6 +441,8 @@ async def addmanual(interaction: discord.Interaction, artist: str, album: str, r
 @app_commands.autocomplete(searchkeywords=get_spotify_artist_album_autocomplete)
 async def add(interaction: discord.Interaction, searchkeywords: str, rating: float):
     try:
+        if len(searchkeywords.split("-----")) != 2:
+            raise ValueError("error: improper formatting, please click on an autocomplete option or use addmanual")
         artist, album = [enter.strip() for enter in searchkeywords.split("-----")]
         await interaction.response.send_message(
         await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
@@ -470,6 +472,8 @@ async def addbulk(interaction: discord.Interaction, albums: str):
 @app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
 async def edit(interaction: discord.Interaction, entry: str, rating: float):
     try:
+        if len(entry.split("-----")) != 2:
+            raise ValueError("error: improper formatting, please click on an autocomplete option")
         artist, album = [enter.strip() for enter in entry.split("-----")]
         await interaction.response.send_message(edit_row(
             interaction.user.id, get_row_from_rankings(album=album, user_id=interaction.user.id), rating))
@@ -485,6 +489,8 @@ async def edit(interaction: discord.Interaction, entry: str, rating: float):
 @app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
 async def remove(interaction: discord.Interaction, entry: str):
     try:
+        if len(entry.split("-----")) != 2:
+            raise ValueError("error: improper formatting, please click on an autocomplete option")
         artist, album = [enter.strip() for enter in entry.split("-----")]
         await interaction.response.send_message(await remove_row(
             interaction.user.id, get_row_from_rankings(album=album, artist=artist, user_id=interaction.user.id)))
