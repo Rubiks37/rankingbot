@@ -396,9 +396,9 @@ async def get_artist_album_autocomplete(interaction: discord.Interaction, curren
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
 async def get_artist_album_autocomplete_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [f"{row[0]} - {row[1]}" for row in get_rows_from_user(interaction.user.id)]
-    return [Choice(name=entry, value=entry)
-            for entry in final_list if current.lower() in entry.lower()]
+    final_list = [[f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}"] for row in get_rows_from_user(interaction.user.id)]
+    return [Choice(name=entry[0], value=entry[1])
+            for entry in final_list if current.lower() in entry[0].lower()]
 
 
 # whenever the bot is ready, it'll log this
@@ -470,7 +470,7 @@ async def addbulk(interaction: discord.Interaction, albums: str):
 @app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
 async def edit(interaction: discord.Interaction, entry: str, rating: float):
     try:
-        artist, album = [enter.strip() for enter in entry.split("-")]
+        artist, album = [enter.strip() for enter in entry.split("-----")]
         await interaction.response.send_message(edit_row(
             interaction.user.id, get_row_from_rankings(album=album, user_id=interaction.user.id), rating))
         await display_rankings()
@@ -485,7 +485,7 @@ async def edit(interaction: discord.Interaction, entry: str, rating: float):
 @app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
 async def remove(interaction: discord.Interaction, entry: str):
     try:
-        artist, album = [enter.strip() for enter in entry.split("-")]
+        artist, album = [enter.strip() for enter in entry.split("-----")]
         await interaction.response.send_message(await remove_row(
             interaction.user.id, get_row_from_rankings(album=album, artist=artist, user_id=interaction.user.id)))
         await display_rankings()
