@@ -11,7 +11,7 @@ CHANGELOG_CHANNEL = 234590345
 # if you want to use it on your server, it should be the owner's id
 # (this allows the mods to run mod commands)
 MOD_ID = 123456789
-
+# see README for instructions on how to obtain these 3 elements to allow for interaction with spotify
 SPOTIFY_CLIENT_ID = "SPOTIFY_CLIENT_ID"
 SPOTIFY_CLIENT_SECRET = "SPOTIFY_CLIENT_SECRET"
 SPOTIFY_REFRESH_TOKEN = "SPOTIFY_REFRESH_TOKEN"
