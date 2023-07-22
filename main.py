@@ -516,11 +516,11 @@ async def cover(interaction: discord.Interaction, entry: str):
 
 # STATS COMMAND - displays stats for a certain album based on current rankings
 @tree.command(name='stats', description='find out stats about an album', guild=my_guild)
-@app_commands.describe(album="the title of the album you are trying to get stats for",
-                       artist="the name of the artist of the album (not required)")
-@app_commands.autocomplete(album=get_album_autocomplete)
-async def stats(interaction: discord.Interaction, album: str, artist: str = None):
+@app_commands.describe(entry="the artist - album you are trying to get (see autocomplete)")
+@app_commands.autocomplete(entry=get_artist_album_autocomplete)
+async def stats(interaction: discord.Interaction, entry: str):
     try:
+        artist, album = [enter.strip() for enter in entry.split("-")]
         row = get_album_master_row(album=album, artist=artist)
         if row is None:
             raise ValueError("error: you cannot get stats for an album that is not ranked by anyone")
