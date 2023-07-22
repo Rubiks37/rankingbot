@@ -1,5 +1,6 @@
 *.txt
 *.db
+*.db-jounral
 
 .idea/
 venv/
