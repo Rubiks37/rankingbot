@@ -577,8 +577,19 @@ async def add_homework(interaction: discord.Interaction, entry: str, user: disco
         if row is None:
             row = spotify.get_album(artist, album)
             await add_to_album_master(row[0], row[1])
-        homework.add_homework(conn, user.id, row[2])
-        spotify.add_album_to_playlist(user, row[2])
+
+        # Don't add it if user has already rated it
+        ratings = get_rows_from_user(user.id)
+        exists = False
+        for rating in ratings:
+            if row[2] == rating[5]:
+                exists = True
+        if exists:
+            await interaction.response.send_message(f"{user.mention} has already listened to {row[0]} - {row[1]}")
+            return
+        
+        #homework.add_homework(conn, user.id, row[2])
+        #spotify.add_album_to_playlist(user, row[2])
         await interaction.response.send_message(f"i successfully added {row[0]} - {row[1]} to {user.mention}'s homework")
     except Exception as error:
         traceback.print_exc()
