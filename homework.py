@@ -6,7 +6,7 @@ def create_homework_table(conn):
 
 def add_homework(conn, user_id, album_id):
     try:
-        create_homework_table()
+        create_homework_table(conn)
         cursor = conn.cursor()
         cursor.execute('''INSERT INTO homework (album_id, user_id, complete) VALUES (?, ?, 0)''', (album_id, user_id))
         cursor.close()
@@ -15,7 +15,7 @@ def add_homework(conn, user_id, album_id):
         pass
 
 def get_homework(conn, user, complete=0):
-    create_homework_table()
+    create_homework_table(conn)
     cursor = conn.cursor()
     cursor.execute(f'''SELECT * FROM homework
                    INNER JOIN album_master ON homework.album_id = album_master.id
@@ -31,7 +31,7 @@ def get_homework(conn, user, complete=0):
     return output + f"\nPlaylist URL: {spotify.get_playlist(user).url}"
 
 def remove_homework(conn, user_id, album_id):
-    create_homework_table()
+    create_homework_table(conn)
     cursor = conn.cursor()
     cursor.execute('''DELETE FROM homework WHERE album_id = ? AND user_id = ?''', (album_id, user_id))
     cursor.close()
