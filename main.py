@@ -566,8 +566,10 @@ async def stats(interaction: discord.Interaction, entry: str):
 @tree.command(name='add_homework', description='Add homework to someone\'s list', guild=my_guild)
 @app_commands.describe(entry="the artist - album you are trying to get (see autocomplete)", user='the user whose homework list you\'re adding to')
 @app_commands.autocomplete(entry=get_spotify_artist_album_autocomplete)
-async def add_homework(interaction: discord.Interaction, entry: str, user: discord.User):
+async def add_homework(interaction: discord.Interaction, entry: str, user: discord.User = None):
     try:
+        if user == None:
+            user = interaction.user
         if len(entry.split("-----")) != 2:
             raise ValueError("error: improper formatting, please click on an autocomplete option")
         artist, album = [enter.strip() for enter in entry.split("-----")]
@@ -585,8 +587,11 @@ async def add_homework(interaction: discord.Interaction, entry: str, user: disco
 # GET HOMEWORK - lists homework for a certain user
 @tree.command(name='get_homework', description='View someone\'s homework', guild=my_guild)
 @app_commands.describe(user='the user whose homework list you\'re adding to')
-async def get_homework(interaction: discord.Interaction, user: discord.User):
+async def get_homework(interaction: discord.Interaction, user: discord.User = None):
     try:
+        if user == None:
+            user = interaction.user
+
         fragments = split_message(homework.get_homework(conn, user))
         await interaction.response.send_message(fragments[0], suppress_embeds=True)
         for msg in fragments[1:]:
