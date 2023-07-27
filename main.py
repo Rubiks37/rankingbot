@@ -1,3 +1,4 @@
+from datetime import datetime
 import traceback
 
 import discord
@@ -6,7 +7,8 @@ from discord.app_commands import Choice
 import sqlite3
 import config
 import statistics
-from spotify_integration import get_album, spotify_close_conn, search_album
+import spotify_integration as spotify
+import homework
 
 # set up Discord Bot with read and write message privileges, but without mentioning privileges
 intents = discord.Intents.default()
@@ -100,15 +102,15 @@ def make_album_master():
 async def add_to_album_master(artist: str, album: str):
     cursor = conn.cursor()
     make_album_master()
-    row = get_album(artist, album)
+    row = spotify.get_album(artist, album)
     if row is None:
         raise LookupError(f"error: no matches found in spotify for {artist} - {album}")
     # this line will prevent duplicate albums from being added
-    if get_album_master_row(album=row[1], artist=row[2], abort_early=True) is not None:
+    if get_album_master_row(album=row[1], artist=row[0], abort_early=True) is not None:
         return None
     year = row[3].split('-')[0]
     cursor.execute(f'''INSERT INTO album_master (artist, album, id, year, image) VALUES (?, ?, ?, ?, ?)''',
-                   (row[2], row[1], row[0], year, row[4]))
+                   (row[0], row[1], row[2], year, row[4]))
     if cursor.rowcount < 1:
         raise LookupError("error: no rows were added, huh why what how???")
     cursor.close()
@@ -181,7 +183,7 @@ async def update_album_master():
 # gets a users ranked list in order by the rating
 def get_rows_from_user(user_id):
     cursor = conn.cursor()
-    cursor.execute(f'''SELECT * FROM user_data_{user_id} ORDER BY rating DESC''')
+    cursor.execute(f'''SELECT * FROM user_data_{user_id} INNER JOIN album_master ON user_data_{user_id}.artists = album_master.artist AND user_data_{user_id}.title = album_master.album ORDER BY rating DESC''')
     rows = cursor.fetchall()
     cursor.close()
     return rows
@@ -202,8 +204,8 @@ def get_all_ranking_rows(unique=False):
 
 
 # transforms rows into nice looking string
-def get_rankings(user_id):
-    rows = get_rows_from_user(user_id)
+def get_rankings(user_id, year=datetime.now().year):
+    rows = [row for row in get_rows_from_user(user_id) if row[6] == year]
     rankings_str = ''
     for i, row in enumerate(rows):
         ranking_str = f'{i + 1}. {row[0]} - {row[1]} ({row[2]})'
@@ -220,18 +222,23 @@ def get_users():
     user_ids = [row[0] for row in rows]
     return user_ids
 
-
-# Updates the rankings channel by deleting all messages then resending them
-async def display_rankings():
-    conn.commit()
-    channel = client.get_channel(config.RANKING_CHANNEL)
+async def get_rankings_message(year=datetime.now().year):
     users = get_users()
-    final_message = ''
+    final_message = f'# Ratings of {year}\n'
     # goes through every user who has had a table generated for them and adds their rankings to final_message
     for user_id in users:
         user = await client.fetch_user(user_id)
-        rankings = get_rankings(user_id)
-        final_message = final_message + f"\n\n{user.mention}'s rankings:\n{rankings}\n"
+        rankings = get_rankings(user_id, year)
+        if len(rankings.strip()) == 0:
+            continue
+        final_message = final_message + f"## {user.mention}'s rankings:\n{rankings}\n"
+    return final_message
+
+# Updates the rankings channel by deleting all messages then resending them
+async def display_rankings(year=datetime.now().year):
+    conn.commit()
+    channel = client.get_channel(config.RANKING_CHANNEL)
+    final_message = await get_rankings_message(year)
     # deletes all the messages current in the channel (that were made by the bot)
     async for message in channel.history():
         if message.author == client.user:
@@ -382,7 +389,7 @@ async def get_album_autocomplete(interaction: discord.Interaction, current: str)
 
 # gets a formatted list of choices of artist - album using spotify search
 async def get_spotify_artist_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    results = search_album(current)
+    results = spotify.search_album(current)
     return [Choice(name=f"{entry.artists[0].name} - {entry.name}",
                    value=f"{entry.artists[0].name} ----- {entry.name}") for entry in results]
 
@@ -410,7 +417,7 @@ async def on_ready():
 
 # APPLICATION COMMAND SECTION---------------------------------------------------------------------------------------
 # UPDATE COMMAND - rewrites the rankings in album rankings
-@tree.command(name="update", description="update the album rankings", guild=my_guild)
+@tree.command(name="update_ratings", description="update the album rankings", guild=my_guild)
 async def update(interaction: discord.Interaction):
     try:
         await interaction.response.send_message(await display_rankings())
@@ -418,9 +425,18 @@ async def update(interaction: discord.Interaction):
         traceback.print_exc()
         await interaction.response.send_message(content=error)
 
+# SHOW RANKINGS COMMAND - prints the ratings of the given year (default == current year)
+@tree.command(name="get_ratings", description="shows the ratings of a specific year", guild=my_guild)
+@app_commands.describe(year="the year of which you want the ratings")
+async def update(interaction: discord.Interaction, year:int = datetime.now().year):
+    try:
+        await interaction.response.send_message(await get_rankings_message(year=year))
+    except Exception as error:
+        traceback.print_exc()
+        await interaction.response.send_message(content=error)
 
 # ADDMANUAL COMMAND - adds an album to a users ranking with no search
-@tree.command(name='addmanual', description='add an album to your rankings', guild=my_guild)
+@tree.command(name='add_rating_manual', description='add an album to your rankings', guild=my_guild)
 @app_commands.describe(artist="the name of the artist",
                        album="the name of the album",
                        rating="the rating of the album")
@@ -436,7 +452,7 @@ async def addmanual(interaction: discord.Interaction, artist: str, album: str, r
 
 
 # ADD COMMAND - uses spotify + autocomplete to find albums
-@tree.command(name='add', description='add an album to your rankings with the help of spotify search', guild=my_guild)
+@tree.command(name='add_rating', description='add an album to your rankings with the help of spotify search', guild=my_guild)
 @app_commands.describe(searchkeywords="type in keywords for your search here")
 @app_commands.autocomplete(searchkeywords=get_spotify_artist_album_autocomplete)
 async def add(interaction: discord.Interaction, searchkeywords: str, rating: float):
@@ -446,6 +462,12 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
         artist, album = [enter.strip() for enter in searchkeywords.split("-----")]
         await interaction.response.send_message(
         await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
+
+        album_id = get_album_master_row(album=album, artist=artist)[2]
+        # Remove from the homework, if it exists there
+        homework.remove_homework(conn, interaction.user.id, album_id)
+        spotify.remove_album_from_playlist(interaction.user, album_id)
+
         await display_rankings()
     except Exception as error:
         traceback.print_exc()
@@ -453,7 +475,7 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
 
 
 # BULK ADD COMMAND - add command that can be done with multiple albums at once (VERY PICKY FORMATTING)
-@tree.command(name="addbulk", description='add multiple albums to your rankings', guild=my_guild)
+@tree.command(name="add_rating_bulk", description='add multiple albums to your rankings', guild=my_guild)
 @app_commands.describe(albums="the full list of albums you want to add. it should be in this format"
                               "\nArtist, Album Title, Rating (Next Line)")
 async def addbulk(interaction: discord.Interaction, albums: str):
@@ -466,7 +488,7 @@ async def addbulk(interaction: discord.Interaction, albums: str):
 
 
 # EDIT COMMAND - edits the ranking of a certain album on a users list
-@tree.command(name='edit', description='edit a rating on an album', guild=my_guild)
+@tree.command(name='edit_rating', description='edit a rating on an album', guild=my_guild)
 @app_commands.describe(entry="the artist - album whos rating you want to change",
                        rating="your new rating of the album (0-10)")
 @app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
@@ -484,7 +506,7 @@ async def edit(interaction: discord.Interaction, entry: str, rating: float):
 
 
 # REMOVE COMMAND - removes an album from a users list
-@tree.command(name="remove", description="remove an album from your ranking", guild=my_guild)
+@tree.command(name="remove_rating", description="remove an album from your ranking", guild=my_guild)
 @app_commands.describe(entry="the artist - album you want to remove (see autocomplete)")
 @app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
 async def remove(interaction: discord.Interaction, entry: str):
@@ -501,7 +523,7 @@ async def remove(interaction: discord.Interaction, entry: str):
 
 
 # COVER COMMAND - displays the cover of the album
-@tree.command(name="cover", description="displays the cover of an album", guild=my_guild)
+@tree.command(name="album_cover", description="displays the cover of an album", guild=my_guild)
 @app_commands.describe(entry="the album - artist you want to see the cover of (see autocomplete)")
 @app_commands.autocomplete(entry=get_spotify_artist_album_autocomplete)
 async def cover(interaction: discord.Interaction, entry: str):
@@ -511,7 +533,7 @@ async def cover(interaction: discord.Interaction, entry: str):
         artist, album = [enter.strip() for enter in entry.split("-----")]
         row = get_album_master_row(album=album, artist=artist)
         if row is None:
-            row = get_album(artist, album)
+            row = spotify.get_album(artist, album)
         embed = discord.Embed(title=album, description=f"{artist} - {album}")
         embed.set_image(url=row[4])
         await interaction.response.send_message(embed=embed)
@@ -540,6 +562,54 @@ async def stats(interaction: discord.Interaction, entry: str):
         traceback.print_exc()
         await interaction.response.send_message(error)
 
+# ADD HOMEWORK - adds homework for a certain user
+@tree.command(name='add_homework', description='Add homework to someone\'s list', guild=my_guild)
+@app_commands.describe(entry="the artist - album you are trying to get (see autocomplete)", user='the user whose homework list you\'re adding to')
+@app_commands.autocomplete(entry=get_spotify_artist_album_autocomplete)
+async def add_homework(interaction: discord.Interaction, entry: str, user: discord.User = None):
+    try:
+        if user == None:
+            user = interaction.user
+        if len(entry.split("-----")) != 2:
+            raise ValueError("error: improper formatting, please click on an autocomplete option")
+        artist, album = [enter.strip() for enter in entry.split("-----")]
+        row = get_album_master_row(album=album, artist=artist)
+        if row is None:
+            row = spotify.get_album(artist, album)
+            await add_to_album_master(row[0], row[1])
+
+        # Don't add it if user has already rated it
+        ratings = get_rows_from_user(user.id)
+        exists = False
+        for rating in ratings:
+            if row[2] == rating[5]:
+                exists = True
+        if exists:
+            await interaction.response.send_message(f"{user.mention} has already listened to {row[0]} - {row[1]}")
+            return
+        
+        #homework.add_homework(conn, user.id, row[2])
+        #spotify.add_album_to_playlist(user, row[2])
+        await interaction.response.send_message(f"i successfully added {row[0]} - {row[1]} to {user.mention}'s homework")
+    except Exception as error:
+        traceback.print_exc()
+        await interaction.response.send_message(error)
+
+# GET HOMEWORK - lists homework for a certain user
+@tree.command(name='get_homework', description='View someone\'s homework', guild=my_guild)
+@app_commands.describe(user='the user whose homework list you\'re adding to')
+async def get_homework(interaction: discord.Interaction, user: discord.User = None):
+    try:
+        if user == None:
+            user = interaction.user
+
+        fragments = split_message(homework.get_homework(conn, user))
+        await interaction.response.send_message(fragments[0], suppress_embeds=True)
+        for msg in fragments[1:]:
+            await interaction.channel.send(msg, suppress_embeds=True)
+    except Exception as error:
+        traceback.print_exc()
+        await interaction.response.send_message(error)
 
 # SYNC COMMAND - calls tree.sync to sync new changes to application commands
 @tree.command(name='sync', description='MOD ONLY: syncs the application commands')
@@ -554,7 +624,7 @@ async def sync(interaction: discord.Interaction):
 
 
 # UPDATEALBUMMASTER - calls update_album_master
-@tree.command(name='updatealbummaster', description='MOD ONLY: updates album master')
+@tree.command(name='albummaster_update', description='MOD ONLY: updates album master')
 @app_commands.checks.has_role(config.MOD_ID)
 async def updatealbummaster(interaction: discord.Interaction):
     try:
@@ -582,7 +652,7 @@ async def sqlite3(interaction: discord.Interaction, command: str):
 
 
 # DEBUG: GETALBUMMASTER - displays album_master,
-@tree.command(name='getalbummaster', description='DEBUG: FOR MODS ONLY, to display album_master for debugging', guild=my_guild)
+@tree.command(name='albummaster_get', description='DEBUG: FOR MODS ONLY, to display album_master for debugging', guild=my_guild)
 @app_commands.describe()
 @app_commands.checks.has_role(config.MOD_ID)
 async def getalbummaster(interaction: discord.Interaction):
@@ -597,7 +667,7 @@ async def getalbummaster(interaction: discord.Interaction):
 async def on_shutdown():
     conn.commit()
     conn.close()
-    spotify_close_conn()
+    spotify.close_conn()
 
 
 TOKEN = config.TOKEN
