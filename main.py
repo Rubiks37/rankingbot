@@ -588,8 +588,8 @@ async def add_homework(interaction: discord.Interaction, entry: str, user: disco
             await interaction.response.send_message(f"{user.mention} has already listened to {row[0]} - {row[1]}")
             return
         
-        #homework.add_homework(conn, user.id, row[2])
-        #spotify.add_album_to_playlist(user, row[2])
+        homework.add_homework(conn, user.id, row[2])
+        spotify.add_album_to_playlist(user, row[2])
         await interaction.response.send_message(f"i successfully added {row[0]} - {row[1]} to {user.mention}'s homework")
     except Exception as error:
         traceback.print_exc()
