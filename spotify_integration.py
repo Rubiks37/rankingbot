@@ -4,15 +4,22 @@ import spotify.sync as spotify
 spotifyClient = spotify.Client(config.SPOTIFY_CLIENT_ID, config.SPOTIFY_CLIENT_SECRET)
 spotifyUser = spotify.User.from_refresh_token(spotifyClient, config.SPOTIFY_REFRESH_TOKEN)
 
-def get_album(artist_name, album_name):
-    results = spotifyClient.search(f"{album_name} {artist_name}", types=["album"], limit=1)
-    album = results[2][0]
 
+def get_album(artist_name=None, album_name=None, album_id=None):
+    if artist_name is None and album_name is None and album_id is None:
+        raise ValueError("error: no artist, album, or id was entered")
+    elif album_id is not None:
+        album = spotifyClient.get_album(spotify_id=album_id)
+    else:
+        results = spotifyClient.search(f"{album_name} {artist_name}", types=["album"], limit=1)
+        album = results[2][0]
     return album.artists[0].name, album.name, album.id, album.release_date, album.images[0].url
+
 
 def search_album(current):
     results = spotifyClient.search(f"{current}", types=["album"], limit=10)
     return results[2]
+
 
 def get_playlist(user):
     playlist_name = f"{user.display_name}'s Homework"
@@ -23,9 +30,10 @@ def get_playlist(user):
             playlist = pl
             break
     
-    if playlist == None:
+    if playlist is None:
         playlist = spotifyUser.create_playlist(playlist_name, description="Your homework, managed by the Ranking Bot")
     return playlist
+
 
 def add_album_to_playlist(user, album_id):
     playlist = get_playlist(user)
@@ -43,6 +51,7 @@ def add_album_to_playlist(user, album_id):
             continue
         playlist.add_tracks(track)
 
+
 def remove_album_from_playlist(user, album_id):
     playlist = get_playlist(user)
     album = spotifyClient.get_album(album_id)
@@ -50,6 +59,7 @@ def remove_album_from_playlist(user, album_id):
     for track in tracks:
         playlist.remove_tracks(track)
 
-def close_conn():
-    spotifyUser.close()
+
+def close_spotify_conn():
     spotifyClient.close()
+    spotifyUser.close()
