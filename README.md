@@ -10,17 +10,21 @@ This could technically also be used for song rankings as well.
 ---
 
 * Creates a ranking table for every single user
-* Supports application commands
 * Add, remove, or edit entries in a users list
 * Get basic statistics for a certain album/ep
 * Display everyone's rankings in a channel, which updates whenever an update is performed
-* Autofill suggestions based on currently established albums/eps and spotify search
+* Allows users to keep track of albums they want to listen to (homework)
+* Displays recent changes to everyones albums list (changelog)
+* Supports application commands
+* Autofill suggestions based on established albums/eps and spotify search
 
 ### CONFIG
 
 ---
 
-There needs to be a file wherever you are hosting it in the same directory as main.py called config.py. See config_example.py to see what it should look like. The ids inside can be obtained by using developer mode within discord itself.
+PLEASE SEE CONFIG_EXAMPLE.PY FOR A SAMPLE OF THE CONFIG FILE
+There needs to be a file wherever you are hosting it in the same directory as main.py called config.py.
+The discord ids inside can be obtained by using developer mode within discord itself. The spotify ids can be obtained using the instructions below.
 
 ### Disclaimer
 
@@ -31,27 +35,24 @@ I am by no means good at programming, so this initial version is a very rough ve
 ### Recent Additions, see all changes in commits (most recent at top)
 
 ---
+* added changelog
+* added autocomplete with homeworkbot
+* added a year filter, so only albums of the current year will be displayed
+* integrated homework bot (add/remove albums for you/others to listen to)
+* added autocomplete integration with spotify
 * added spotify compatibility with /add and /cover commands
 * fix the issue of having multiple album/eps of the same name in the database, it should be much more friendly to that
 * added album_master, which stores cover image urls from spotify api and also allows for less stupidness when getting album names for all commands that require it
-* made so many methods a lot less stupid
-* added /cover
-* integrated with spotify api to get picture of albums as attachments for stat commands
-* added autocomplete to edit/delete commands
-* switched add choices to be autocompletes and added some methods to support
-* added /sync as its own commands
-* added choices to stats and add commands
+
 
 ### To add list in the future
 
 ---
 * /help command
-* add an album changelog that specifies what changes everyone has made to their album list recently (toggleable feature)
 * add an undo feature
 * add a top albums feature
 * add even more error handling
 * MORE STATS
-* implement a fix for if an artist and album have the same name or something of the like
 
 ### How to get Spotify Tokens
 
