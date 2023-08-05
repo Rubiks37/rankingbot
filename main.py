@@ -49,6 +49,19 @@ def split_message(content):
     return fragments
 
 
+def split_message_rough(content):
+    print(len(content))
+    if len(content) <= 2000:
+        return [content]
+    fragments = []
+    while len(content) > 2000:
+        print(len(content[:2000]))
+        fragments.append(content[:2000])
+        content = content[2000:].lstrip()
+    fragments.append(content)
+    return fragments
+
+
 # strips names down to alphanumeric characters - useful for people doing things with different symbols/capitalization
 # if none is inputted, itll just append none
 def strip_names(*args):
@@ -700,8 +713,7 @@ async def get_homework(interaction: discord.Interaction, user: discord.User = No
         await interaction.response.defer()
         if user is None:
             user = interaction.user
-
-        fragments = split_message(homework.get_homework(conn, user))
+        fragments = split_message(homework.get_homework_formatted(conn, user))
         await interaction.followup.send(fragments[0], suppress_embeds=True)
         for msg in fragments[1:]:
             await interaction.channel.send(msg, suppress_embeds=True)
@@ -776,7 +788,8 @@ async def sqlite3(interaction: discord.Interaction, command: str):
 async def getalbummaster(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
-        result = split_message(get_album_master())
+        data = str(get_album_master())
+        result = split_message_rough(data)
         await interaction.followup.send(content=result[0])
         for msg in result[1:]:
             await interaction.channel.send(msg)
