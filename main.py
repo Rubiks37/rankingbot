@@ -90,7 +90,7 @@ async def changelog_add_ranking(user, album_id, rating):
     channel = get_changelog_channel()
     if not config.CHANGELOG_ACTIVE:
         return
-    row = get_album_master_row(album_id=album_id)
+    row = spotify.get_album(album_id=album_id)
     await channel.send(f"RANKINGS: {user.mention} has rated {row[0]} - {row[1]} as a {rating}")
     return
 
@@ -100,7 +100,7 @@ async def changelog_edit_ranking(user, album_id, old_rating, new_rating):
     channel = get_changelog_channel()
     if not config.CHANGELOG_ACTIVE:
         return
-    row = get_album_master_row(album_id=album_id)
+    row = spotify.get_album(album_id=album_id)
     await channel.send(f"RANKINGS: {user.mention} has changed {row[0]} - {row[1]} from a {old_rating}/10.0 to a {new_rating}/10.0")
     return
 
@@ -121,7 +121,7 @@ async def changelog_add_homework(user, album_id, user_affected):
     channel = get_changelog_channel()
     if not config.CHANGELOG_ACTIVE:
         return
-    row = get_album_master_row(album_id=album_id)
+    row = spotify.get_album(album_id=album_id)
     if user.id == user_affected.id:
         await channel.send(f"HOMEWORK: {user.mention} has added {row[0]} - {row[1]} to their homework list")
     else:
@@ -182,7 +182,7 @@ async def add_to_album_master(artist: str, album: str, album_id: int = None):
     return row
 
 
-# function that removes a row from album_master (should be called on rows that are no longer in anyone's album ranking)
+# function that removes a row from album_master (should be called on rows that are no longer in anyone's album ranking/homework)
 async def remove_from_album_master(album: str, artist=None):
     row = get_album_master_row(artist=artist, album=album)
     if row is None:
@@ -221,14 +221,13 @@ def get_album_master_row(album: str = None, artist=None, album_id: int = None, a
         for row in get_album_master():
             if album_id == row[2]:
                 return row
-    # if album_id is not defined, we can still use the album names to find the row
-    else:
-        for row in get_album_master():
-            row_album, album, row_artist, artist = strip_names(row[1], album, row[0], artist)
-            if (row_album in album) and (artist is None or row_artist in artist):
-                if abort_early:
-                    return row
-                final_list.append(row)
+    # if album_id is not defined or album ids don't match, we can still use the album names to find the row
+    for row in get_album_master():
+        row_album, album, row_artist, artist = strip_names(row[1], album, row[0], artist)
+        if (row_album in album) and (artist is None or row_artist in artist):
+            if abort_early:
+                return row
+            final_list.append(row)
     if len(final_list) > 1:
         if artist is not None:
             raise Exception("error: multiple entries of the same artist/album exist in album_master, please ping ruby")
