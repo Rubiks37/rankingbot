@@ -402,6 +402,7 @@ async def remove_row(user_id, row):
         return f"i successfully deleted {row[0]} - {row[1]} from your list"
 
 
+# ALBUM STATS SECTION---------------------------------------------------------------------------------------------------
 # takes an album and (maybe) an artist in and checks if it finds them in a ranking table
 # if it finds one, it will return the full row that it was on.
 # also can take a user_id to only search rows specific to that user.
@@ -696,11 +697,12 @@ async def add_homework(interaction: discord.Interaction, entry: str, user: disco
 @app_commands.describe(user='the user whose homework list you\'re looking at')
 async def get_homework(interaction: discord.Interaction, user: discord.User = None):
     try:
+        await interaction.response.defer()
         if user is None:
             user = interaction.user
 
         fragments = split_message(homework.get_homework(conn, user))
-        await interaction.response.send_message(fragments[0], suppress_embeds=True)
+        await interaction.followup.send(fragments[0], suppress_embeds=True)
         for msg in fragments[1:]:
             await interaction.channel.send(msg, suppress_embeds=True)
     except Exception as error:
@@ -773,7 +775,11 @@ async def sqlite3(interaction: discord.Interaction, command: str):
 @app_commands.checks.has_role(config.MOD_ID)
 async def getalbummaster(interaction: discord.Interaction):
     try:
-        await interaction.response.send_message(content=get_album_master())
+        await interaction.response.defer()
+        result = split_message(get_album_master())
+        await interaction.followup.send(content=result[0])
+        for msg in result[1:]:
+            await interaction.channel.send(msg)
     except Exception as error:
         traceback.print_exc()
         await interaction.response.send_message(content=error)
