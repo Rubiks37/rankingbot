@@ -13,6 +13,7 @@ This could technically also be used for song rankings as well.
 * Add, remove, or edit entries in a users list
 * Get basic statistics for a certain album/ep
 * Display everyone's rankings in a channel, which updates whenever an update is performed
+* Gets the top albums by rating and standard deviation for a particular year (or no year)
 * Allows users to keep track of albums they want to listen to (homework)
 * Displays recent changes to everyones albums list (changelog)
 * Supports application commands
@@ -35,6 +36,7 @@ I am by no means good at programming, so this initial version is a very rough ve
 ### Recent Additions, see all changes in commits (most recent at top)
 
 ---
+* added new app command /top_albums which gets top albums for a particular year
 * added changelog
 * added autocomplete with homeworkbot
 * added a year filter, so only albums of the current year will be displayed
@@ -50,9 +52,7 @@ I am by no means good at programming, so this initial version is a very rough ve
 ---
 * /help command
 * add an undo feature
-* add a top albums feature
 * add even more error handling
-* MORE STATS
 
 ### How to get Spotify Tokens
 
