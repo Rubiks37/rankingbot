@@ -50,12 +50,10 @@ def split_message(content):
 
 
 def split_message_rough(content):
-    print(len(content))
     if len(content) <= 2000:
         return [content]
     fragments = []
     while len(content) > 2000:
-        print(len(content[:2000]))
         fragments.append(content[:2000])
         content = content[2000:].lstrip()
     fragments.append(content)
@@ -212,45 +210,45 @@ def get_album_master():
 # album_id is the best way to use it, so it will check if it can do this first
 # doubles as a does row exist function (set abort_early to true)
 def get_album_master_row(album: str = None, artist=None, album_id: int = None, abort_early=False):
-    final_list = []
     if album is None and album_id is None:
         raise ValueError("error: no value entered for either album or album_id")
     # if album_id is defined, we just use that to search through the list.
     # we also don't need to consider abort early because it literally cannot put duplicate album ids in the masterlist
-    elif album_id is not None:
-        for row in get_album_master():
-            if album_id == row[2]:
-                return row
+    if album_id is not None:
+        ret = next((row for row in get_album_master() if row[2] == album_id), None)
+        if ret is not None:
+            return ret
+
     # if album_id is not defined or album ids don't match, we can still use the album names to find the row
+    final_list = []
     for row in get_album_master():
         row_album, album, row_artist, artist = strip_names(row[1], album, row[0], artist)
         if (row_album in album) and (artist is None or row_artist in artist):
             if abort_early:
                 return row
             final_list.append(row)
+
     if len(final_list) > 1:
-        if artist is not None:
-            raise Exception("error: multiple entries of the same artist/album exist in album_master, please ping ruby")
-        else:
-            raise ValueError("error: duplicate albums detected in album_master, please enter an artist")
-    if len(final_list) == 0:
+        raise Exception("error: multiple entries of the same artist/album exist in album_master, please ping ruby")
+    elif len(final_list) == 0:
         return None
-    return final_list[0]
+    else:
+        return final_list[0]
 
 
 # this function is called via command and should refresh the master list
 async def update_album_master():
     make_album_master()
     master_rows = get_album_master()
-    user_rows = get_all_ranking_rows(unique=True)
+    user_albums = {(row[0], row[1]) for row in get_all_ranking_rows(unique=True)}
+    homework_album_ids = {row[2] for row in homework.get_all_homework_rows(conn)}
     updated = 0
-    for user_row in user_rows:
-        # this next line is only possible since add_to_album_master does a check to
-        # make sure that the inputted row is not already in album_master
-        if await add_to_album_master(artist=user_row[0], album=user_row[1]) is not None:
+    for user_row in user_albums:
+        if user_row not in {(row[0], row[1]) for row in master_rows}:
+            await add_to_album_master(artist=user_row[0], album=user_row[1])
             updated += 1
     for master_row in master_rows:
-        if get_row_from_rankings(artist=master_row[0], album=master_row[1]) is None:
+        if (master_row[0], master_row[1]) not in user_albums and master_row[2] not in homework_album_ids:
             if homework.get_homework_row(conn=conn, album_id=master_row[2]) is None:
                 await remove_from_album_master(artist=master_row[0], album=master_row[1])
                 updated += 1
@@ -275,29 +273,29 @@ async def make_table(user_id):
 # gets a users ranked list in order by the rating
 def get_rows_from_user(user_id):
     cursor = conn.cursor()
-    cursor.execute(f'''SELECT * FROM user_data_{user_id} INNER JOIN album_master ON user_data_{user_id}.artists = album_master.artist AND user_data_{user_id}.title = album_master.album ORDER BY rating DESC''')
+    cursor.execute(f'''SELECT album_master.artist, album_master.album, user_data_{user_id}.rating, album_master.id, album_master.year, album_master.image FROM user_data_{user_id} INNER JOIN album_master ON user_data_{user_id}.artists = album_master.artist AND user_data_{user_id}.title = album_master.album ORDER BY rating DESC''')
     rows = cursor.fetchall()
     cursor.close()
     return rows
 
 
 # gets ever single user_id, pulls all rows and returns them (yes its like a 4 dimensional list shut up)
+# if unique, will use a set since sets cant have unique items
 def get_all_ranking_rows(unique=False):
-    final_rows = []
+    final_rows = set() if unique else []
     user_ids = get_users()
     for user_id in user_ids:
         rows = get_rows_from_user(user_id)
         if unique:
-            [final_rows.append(row[slice(0, 2)]) for row in rows
-             if (strip_names(row[0])[0] or strip_names(row[1])[0]) not in strip_names(final_rows)[0]]
+            final_rows.update({(row[0], row[1]) for row in rows})
         else:
-            [final_rows.append(row) for row in rows]
+            final_rows.extend(rows)
     return final_rows
 
 
 # transforms rows into nice looking string
 def get_user_rankings_formatted(user_id, year=datetime.now().year):
-    rows = [row for row in get_rows_from_user(user_id) if row[6] == year]
+    rows = [row for row in get_rows_from_user(user_id) if row[4] == year]
     rankings_str = ''
     for i, row in enumerate(rows):
         ranking_str = f'{i + 1}. {row[0]} - {row[1]} ({row[2]})'
@@ -352,7 +350,7 @@ async def add_row(user_id, artist, album, rating: float, album_id: int = 0):
     await make_table(user_id)
     if get_row_from_rankings(album=album, artist=artist, user_id=user_id) is not None:
         raise ValueError("error: you cannot add 2 of the same album to your rankings")
-    artist, album = [artist.strip(), album.strip()]
+    artist, album = (artist.strip(), album.strip())
     # we can just call add_to_album_master since it does a check to ensure that the album is not already in album_master
     await add_to_album_master(artist=artist, album=album, album_id=album_id)
     # now we get the formatted row from album_master
@@ -460,6 +458,8 @@ def get_album_stats(album, artist=None):
         raise LookupError('error: no albums found matching the name \"' + album + '\"')
     ratings = get_album_ratings(album=album)
     num_ratings = len(ratings)
+    if num_ratings == 0:
+        return "This album has no ratings"
     mean = round(statistics.mean(ratings), 2)
     final_string = f"Artist: {row[0]}\nAlbum: {row[1]}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
     if len(ratings) > 1:
@@ -468,48 +468,131 @@ def get_album_stats(album, artist=None):
     return final_string
 
 
+# this will get the ratings of every single album and return a dcitionary - tuple (artist, album) : tuple (ratings)
+def get_all_ratings():
+    # using a dictionary for this to map a tuple containing the artist and album titles to a tuple of ratings
+    ratedict = dict()
+    for row in get_all_ranking_rows(unique=False):
+        ratings = ratedict.get((row[0], row[1], row[4]))
+        if ratings is None:
+            ratings = (row[2],)
+        else:
+            ratings += (row[2],)
+        ratedict.update({(row[0], row[1], row[4]): ratings})
+    return ratedict
+
+
+def get_top_albums(top_number: int, min_ratings: int, year: int, sortby: str):
+    all_ratings = {key: value for key, value in get_all_ratings().items() if len(value) >= min_ratings and
+                   (year == -1 or year == key[2])}
+    # error raising for invalid parameters
+    if len(all_ratings) == 0:
+        raise ValueError("error: no albums found that meet the conditions required")
+    if 0 < top_number and top_number > len(all_ratings):
+        raise ValueError("error: not enough albums to rank (or you entered a negative value)")
+
+    if "avg" in sortby:
+        sortdict = dict(sorted({key: round(statistics.mean(value), 2) for key, value in all_ratings.items()}.items(), key=lambda ratings: ratings[1], reverse=True))
+    else:
+        if min_ratings < 2:
+            raise Exception("error: you cannot sort by standard deviation if minimum ratings is set to less than 2")
+        sortdict = dict(sorted({key: round(statistics.stdev(value), 2) for key, value in all_ratings.items()}.items(), key=lambda ratings: ratings[1]))
+    ret = sortdict.copy()
+    for i, album in enumerate(sortdict):
+        if i > top_number-1:
+            ret.pop(album)
+    return ret
+
+
+def get_top_albums_formatted(top_number: int = 3, min_ratings: int = 2, year: int = -1, sortby: str = "avg"):
+    rankings = get_top_albums(top_number, min_ratings, year, sortby)
+    if 'avg' in sortby:
+        final_string = f"## Top {top_number} albums with {min_ratings} rating(s) according to average:"
+    else:
+        final_string = f"## Top {top_number} albums with {min_ratings} rating(s) according to standard deviation:"
+    for key, value in rankings.items():
+        final_string += f"\n{key[0]} - {key[1]}: {value}"
+    return final_string
+
+
+# takes in year, minratings, and numalbums and returns the missing one (either minratings or numalbums)
+def top_albums_autocomplete_helper(whoscallin: str, year=datetime.now().year, minratings: int = None, numalbums: int = None):
+    ratings_year = {key: value for key, value in get_all_ratings().items() if year == -1 or year == key[2]}
+    if "maxalbums" in whoscallin:
+        if minratings is None:
+            return len(ratings_year)
+        final_dict = {key: value for key, value in ratings_year.items() if len(value) >= minratings}
+        return len(final_dict)
+    if "minrating" in whoscallin:
+        # sort the dictionary by number of ratings,
+        # then go down however many rows and return the number of ratings on that album
+        final_dict = dict(sorted(ratings_year.items(), key=lambda row: len(row[1]), reverse=True))
+        if numalbums is None:
+            return len(list(final_dict.values())[len(final_dict)-1])
+        return len(list(final_dict.values())[numalbums-1])
+    return
+
+
 # AUTOCOMPLETE AND CHOICES SECTION-----------------------------------------------------------------------------------
 # gets a list of artists in album_master and returns a list of choices for use in autocomplete
-async def get_artist_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+async def autocomplete_artist(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     final_list = [row[0] for row in get_album_master()]
     return [Choice(name=artist, value=artist)
             for artist in final_list if strip_names(current)[0] in strip_names(artist)[0]]
 
 
 # same as above, but it does albums with autocomplete
-async def get_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+async def autocomplete_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     final_list = [row[1] for row in get_album_master()]
     return [Choice(name=album, value=album)
             for album in final_list if strip_names(current)[0] in strip_names(album)[0]]
 
 
 # gets a formatted list of choices of artist - album using spotify search
-async def get_spotify_artist_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+async def autocomplete_spotify(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     results = spotify.search_album(current)
     return [Choice(name=f"{entry.artists[0].name} - {entry.name}",
                    value=f"{entry.artists[0].name} ----- {entry.name} ----- {entry.id}") for entry in results]
 
 
 # gets a formatted list of choices of artist - album using album_master
-async def get_artist_album_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [[f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}"] for row in get_album_master()]
+async def autocomplete_artist_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    final_list = [(f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}") for row in get_album_master()]
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
-async def get_artist_album_autocomplete_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [[f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}"] for row in get_rows_from_user(interaction.user.id)]
+async def autocomplete_artist_album_user_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    final_list = [(f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}") for row in get_rows_from_user(interaction.user.id)]
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from homework
-async def get_artist_album_autocomplete_homework_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [[f"{row[3]} - {row[4]}", f"{row[3]} ----- {row[4]} ----- {row[5]}"]
+async def autocomplete_artist_album_homework_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    final_list = [(f"{row[3]} - {row[4]}", f"{row[3]} ----- {row[4]} ----- {row[5]}")
                   for row in homework.get_homework(conn=conn, user_id=interaction.user.id)]
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
+
+
+# gets choices for num albums as part of top_albums command
+async def autocomplete_top_albums_numalbums(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
+    min_ratings = interaction.namespace.minimumratings
+    year = interaction.namespace.year if interaction.namespace.year is not None else datetime.now().year
+    max_num_albums = top_albums_autocomplete_helper("maxalbums", year=year, minratings=min_ratings)
+    return [Choice(name=str(num), value=num)
+            for num in range(1, max_num_albums+1) if str(current) in str(num)]
+
+
+# gets choices for num albums as part of top_albums command
+async def autocomplete_top_albums_minratings(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
+    numalbums = interaction.namespace.numberofalbums
+    year = interaction.namespace.year if interaction.namespace.year is not None else datetime.now().year
+    max_min_num_ratings = top_albums_autocomplete_helper("minrating", year=year, numalbums=numalbums)
+    return [Choice(name=str(num), value=num)
+            for num in range(1, max_min_num_ratings+1) if str(current) in str(num)]
 
 
 # whenever the bot is ready, it'll log this
@@ -546,7 +629,7 @@ async def update(interaction: discord.Interaction, year: int = datetime.now().ye
 @app_commands.describe(artist="the name of the artist",
                        album="the name of the album",
                        rating="the rating of the album")
-@app_commands.autocomplete(artist=get_artist_autocomplete, album=get_album_autocomplete)
+@app_commands.autocomplete(artist=autocomplete_artist, album=autocomplete_album)
 async def addmanual(interaction: discord.Interaction, artist: str, album: str, rating: float):
     try:
         await interaction.response.send_message(
@@ -560,7 +643,7 @@ async def addmanual(interaction: discord.Interaction, artist: str, album: str, r
 # ADD COMMAND - uses spotify + autocomplete to find albums
 @tree.command(name='add_rating', description='add an album to your rankings with the help of spotify search', guild=my_guild)
 @app_commands.describe(searchkeywords="type in keywords for your search here")
-@app_commands.autocomplete(searchkeywords=get_spotify_artist_album_autocomplete)
+@app_commands.autocomplete(searchkeywords=autocomplete_spotify)
 async def add(interaction: discord.Interaction, searchkeywords: str, rating: float):
     try:
         if len(searchkeywords.split("-----")) != 3:
@@ -598,7 +681,7 @@ async def addbulk(interaction: discord.Interaction, albums: str):
 @tree.command(name='edit_rating', description='edit a rating on an album', guild=my_guild)
 @app_commands.describe(entry="the artist - album whos rating you want to change",
                        rating="your new rating of the album (0-10)")
-@app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
+@app_commands.autocomplete(entry=autocomplete_artist_album_user_specific)
 async def edit(interaction: discord.Interaction, entry: str, rating: float):
     try:
         if len(entry.split("-----")) != 2:
@@ -618,7 +701,7 @@ async def edit(interaction: discord.Interaction, entry: str, rating: float):
 # REMOVE COMMAND - removes an album from a users list
 @tree.command(name="remove_rating", description="remove an album from your ranking", guild=my_guild)
 @app_commands.describe(entry="the artist - album you want to remove (see autocomplete)")
-@app_commands.autocomplete(entry=get_artist_album_autocomplete_specific)
+@app_commands.autocomplete(entry=autocomplete_artist_album_user_specific)
 async def remove(interaction: discord.Interaction, entry: str):
     try:
         if len(entry.split("-----")) != 2:
@@ -637,7 +720,7 @@ async def remove(interaction: discord.Interaction, entry: str):
 # COVER COMMAND - displays the cover of the album
 @tree.command(name="album_cover", description="displays the cover of an album", guild=my_guild)
 @app_commands.describe(entry="the album - artist you want to see the cover of (see autocomplete)")
-@app_commands.autocomplete(entry=get_spotify_artist_album_autocomplete)
+@app_commands.autocomplete(entry=autocomplete_spotify)
 async def cover(interaction: discord.Interaction, entry: str):
     try:
         if len(entry.split("-----")) != 3:
@@ -657,7 +740,7 @@ async def cover(interaction: discord.Interaction, entry: str):
 # STATS COMMAND - displays stats for a certain album based on current rankings
 @tree.command(name='stats', description='find out stats about an album', guild=my_guild)
 @app_commands.describe(entry="the artist - album you are trying to get (see autocomplete)")
-@app_commands.autocomplete(entry=get_artist_album_autocomplete)
+@app_commands.autocomplete(entry=autocomplete_artist_album)
 async def stats(interaction: discord.Interaction, entry: str):
     try:
         if len(entry.split("-----")) != 2:
@@ -675,11 +758,25 @@ async def stats(interaction: discord.Interaction, entry: str):
         await interaction.response.send_message(error)
 
 
+@tree.command(name='top_albums', description='find the top albums of the year (or any year) (refresh autocomplete by changing text channels)', guild=my_guild)
+@app_commands.describe(numberofalbums="how many albums do you want to see ranked? (default: 5)",
+                       minimumratings="how many rankings do you want the album to have minimum (default: 1)",
+                       year="the year you want to filter by, -1 for no filtering")
+@app_commands.autocomplete(numberofalbums=autocomplete_top_albums_numalbums, minimumratings=autocomplete_top_albums_minratings)
+@app_commands.choices(sortby=[Choice(name='average', value='avg'), Choice(name='standard deviation', value='std')])
+async def top_albums(interaction: discord.Interaction, numberofalbums: int = 5, minimumratings: int = 1, sortby: str = 'avg', year: int = datetime.now().year):
+    try:
+        await interaction.response.send_message(get_top_albums_formatted(numberofalbums, minimumratings, year, sortby))
+    except Exception as error:
+        traceback.print_exc()
+        await interaction.response.send_message(error)
+
+
 # ADD HOMEWORK - adds homework for a certain user
 @tree.command(name='add_homework', description='Add homework to someone\'s list', guild=my_guild)
 @app_commands.describe(entry="the artist - album you are trying to get (see autocomplete)",
                        user='the user whose homework list you\'re adding to')
-@app_commands.autocomplete(entry=get_spotify_artist_album_autocomplete)
+@app_commands.autocomplete(entry=autocomplete_spotify)
 async def add_homework(interaction: discord.Interaction, entry: str, user: discord.User = None):
     try:
         await interaction.response.defer()
@@ -724,7 +821,7 @@ async def get_homework(interaction: discord.Interaction, user: discord.User = No
 # REMOVE_HOMEWORK: deletes homework from a users list
 @tree.command(name='remove_homework', description='remove homework from your list', guild=my_guild)
 @app_commands.describe(entry="the artist - album you are trying to remove from your list (see autocomplete)")
-@app_commands.autocomplete(entry=get_artist_album_autocomplete_homework_specific)
+@app_commands.autocomplete(entry=autocomplete_artist_album_homework_specific)
 async def remove_homework(interaction: discord.Interaction, entry: str):
     try:
         # splits entry into album, artist
