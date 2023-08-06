@@ -28,6 +28,17 @@ def get_homework(conn, user_id, complete=0):
     return data
 
 
+def get_all_homework_rows(conn, complete=0):
+    create_homework_table(conn)
+    cursor = conn.cursor()
+    cursor.execute(f'''SELECT * FROM homework
+                   INNER JOIN album_master ON homework.album_id = album_master.id
+                   WHERE complete = ?''', (complete,))
+    data = cursor.fetchall()
+    cursor.close()
+    return data
+
+
 def get_homework_formatted(conn, user, complete=0):
     data = get_homework(conn, user.id, complete)
     output = f'## Homework of {user.mention}\n'
