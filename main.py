@@ -507,9 +507,9 @@ def get_top_albums(top_number: int, min_ratings: int, year: int, sortby: str):
 def get_top_albums_formatted(top_number: int = 3, min_ratings: int = 2, year: int = -1, sortby: str = "avg"):
     rankings = get_top_albums(top_number, min_ratings, year, sortby)
     if 'avg' in sortby:
-        final_string = f"## Top {top_number} albums with {min_ratings} rating(s) according to average:"
+        final_string = f"## Top {top_number} albums with at least {min_ratings} rating(s) according to average:"
     else:
-        final_string = f"## Top {top_number} albums with {min_ratings} rating(s) according to standard deviation:"
+        final_string = f"## Top {top_number} albums with at least {min_ratings} rating(s) according to standard deviation:"
     for key, value in rankings.items():
         final_string += f"\n{key[0]} - {key[1]}: {value}"
     return final_string
