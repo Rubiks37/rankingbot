@@ -138,8 +138,7 @@ async def changelog_finish_homework(user, album_id):
     return
 
 
-async def changelog_new_user(user_id):
-    user = client.get_user(user_id)
+async def changelog_new_user(user):
     channel = get_changelog_channel()
     if not config.CHANGELOG_ACTIVE:
         return
@@ -258,12 +257,13 @@ async def update_album_master():
 
 # RANKINGS TABLE SECTION----------------------------------------------------------------------------------------------
 # makes a table for a user if it doesn't exist and inserts them into active users
-async def make_table(user_id):
+async def make_table(user):
+    user_id = user.id
     cursor = conn.cursor()
     cursor.execute(f'''SELECT name FROM sqlite_master WHERE type='table' AND name='user_data_{user_id}';''')
     if cursor.fetchone() is None:
         # CHANGELOG - NEW USER
-        await changelog_new_user(client.get_user(user_id))
+        await changelog_new_user(client.get_user(user))
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id} (artists TEXT, title TEXT, rating FLOAT)''')
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS users (user_ids INTEGER)''')
         cursor.execute(f'''INSERT INTO users (user_ids) VALUES ('{user_id}')''')
@@ -346,9 +346,10 @@ async def display_rankings(year=datetime.now().year):
 
 
 # adds a row to a table for a given user
-async def add_row(user_id, artist, album, rating: float, album_id: int = 0):
+async def add_row(user, artist, album, rating: float, album_id: int = 0):
+    user_id = user.id
     cursor = conn.cursor()
-    await make_table(user_id)
+    await make_table(user)
     if get_row_from_rankings(album=album, artist=artist, user_id=user_id) is not None:
         raise ValueError("error: you cannot add 2 of the same album to your rankings")
     artist, album = (artist.strip(), album.strip())
@@ -651,7 +652,7 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
             raise ValueError("error: improper formatting, please click on an autocomplete option or use addmanual")
         artist, album, album_id = [enter.strip() for enter in searchkeywords.split("-----")]
         await interaction.response.send_message(await add_row(
-            user_id=interaction.user.id, artist=artist, album=album, album_id=album_id, rating=rating))
+            user_id=interaction.user, artist=artist, album=album, album_id=album_id, rating=rating))
         # Remove from the homework, if it exists there
         homework.remove_homework(conn, interaction.user.id, album_id)
         spotify.remove_album_from_playlist(interaction.user, album_id)
