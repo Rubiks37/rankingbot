@@ -652,7 +652,7 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
             raise ValueError("error: improper formatting, please click on an autocomplete option or use addmanual")
         artist, album, album_id = [enter.strip() for enter in searchkeywords.split("-----")]
         await interaction.response.send_message(await add_row(
-            user_id=interaction.user, artist=artist, album=album, album_id=album_id, rating=rating))
+            user=interaction.user, artist=artist, album=album, album_id=album_id, rating=rating))
         # Remove from the homework, if it exists there
         homework.remove_homework(conn, interaction.user.id, album_id)
         spotify.remove_album_from_playlist(interaction.user, album_id)
