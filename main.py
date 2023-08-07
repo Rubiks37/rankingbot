@@ -263,7 +263,7 @@ async def make_table(user):
     cursor.execute(f'''SELECT name FROM sqlite_master WHERE type='table' AND name='user_data_{user_id}';''')
     if cursor.fetchone() is None:
         # CHANGELOG - NEW USER
-        await changelog_new_user(client.get_user(user))
+        await changelog_new_user(user)
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id} (artists TEXT, title TEXT, rating FLOAT)''')
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS users (user_ids INTEGER)''')
         cursor.execute(f'''INSERT INTO users (user_ids) VALUES ('{user_id}')''')
