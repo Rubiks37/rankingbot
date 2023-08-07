@@ -138,7 +138,8 @@ async def changelog_finish_homework(user, album_id):
     return
 
 
-async def changelog_new_user(user):
+async def changelog_new_user(user_id):
+    user = client.get_user(user_id)
     channel = get_changelog_channel()
     if not config.CHANGELOG_ACTIVE:
         return
