@@ -1,24 +1,32 @@
 import config
 import spotify.sync as spotify
+from spotify import errors as spotify_errors
 
 spotifyClient = spotify.Client(config.SPOTIFY_CLIENT_ID, config.SPOTIFY_CLIENT_SECRET)
 spotifyUser = spotify.User.from_refresh_token(spotifyClient, config.SPOTIFY_REFRESH_TOKEN)
 
 
+# uses an id to find an album, and if no id is given, searches for the top result in spotify
+# returns tuple (artist, album, id, release date, image url)
 def get_album(artist_name=None, album_name=None, album_id=None):
     if artist_name is None and album_name is None and album_id is None:
         raise ValueError("error: no artist, album, or id was entered")
     elif album_id is not None:
-        album = spotifyClient.get_album(spotify_id=album_id)
+        try:
+            album = spotifyClient.get_album(spotify_id=album_id)
+        except spotify_errors.HTTPException:
+            raise ValueError("error: an invalid id was entered, maybe because you didnt select an autocomplete option")
     else:
         results = spotifyClient.search(f"{album_name} {artist_name}", types=["album"], limit=1)
+        if results[2] is None:
+            raise LookupError("error: no results found in spotify database")
         album = results[2][0]
     return album.artists[0].name, album.name, album.id, album.release_date, album.images[0].url
 
 
-def search_album(current):
+async def search_album(current):
     results = spotifyClient.search(f"{current}", types=["album"], limit=10)
-    return results[2]
+    return tuple(results[2])
 
 
 def get_playlist(user):
