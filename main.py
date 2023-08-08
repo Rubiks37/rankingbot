@@ -173,9 +173,10 @@ async def add_to_album_master(artist: str, album: str, album_id: int = None):
     year = row[3].split('-')[0]
     cursor.execute(f'''INSERT INTO album_master (artist, album, id, year, image) VALUES (?, ?, ?, ?, ?)''',
                    (row[0], row[1], row[2], year, row[4]))
-    if cursor.rowcount < 1:
-        raise LookupError("error: no rows were added, huh why what how???")
+    data = cursor.fetchall()
     cursor.close()
+    if data is None:
+        raise LookupError("error: no rows were added, huh why what how???")
     conn.commit()
     return row
 
@@ -188,10 +189,10 @@ async def remove_from_album_master(album: str, artist=None):
         raise ValueError(f"error: could not find {artist} - {album} in album_master")
     cursor = conn.cursor()
     cursor.execute('''DELETE FROM album_master WHERE artist = ? AND album = ? RETURNING *''', (row[0], row[1]))
-    cursor.fetchall()
-    if cursor.rowcount < 1:
-        raise LookupError("error: no rows were deleted from album_master, which is confusing idk why that happened")
+    data = cursor.fetchall()
     cursor.close()
+    if data is None:
+        raise LookupError("error: no rows were deleted from album_master, which is confusing idk why that happened")
     conn.commit()
     return "ok"
 
@@ -257,12 +258,12 @@ async def update_album_master():
 
 # RANKINGS TABLE SECTION----------------------------------------------------------------------------------------------
 # makes a table for a user if it doesn't exist and inserts them into active users
-async def make_table(user):
-    user_id = user.id
+async def make_table(user_id):
     cursor = conn.cursor()
     cursor.execute(f'''SELECT name FROM sqlite_master WHERE type='table' AND name='user_data_{user_id}';''')
     if cursor.fetchone() is None:
         # CHANGELOG - NEW USER
+        user = await client.fetch_user(user_id)
         await changelog_new_user(user)
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id} (artists TEXT, title TEXT, rating FLOAT)''')
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS users (user_ids INTEGER)''')
@@ -272,6 +273,8 @@ async def make_table(user):
 
 
 # gets a users ranked list in order by the rating
+# list return structure:
+# returns [artist, album, rating, id, year, image_link]
 def get_rows_from_user(user_id):
     cursor = conn.cursor()
     cursor.execute(f'''SELECT album_master.artist, album_master.album, user_data_{user_id}.rating, album_master.id, album_master.year, album_master.image FROM user_data_{user_id} INNER JOIN album_master ON user_data_{user_id}.artists = album_master.artist AND user_data_{user_id}.title = album_master.album ORDER BY rating DESC''')
@@ -280,8 +283,8 @@ def get_rows_from_user(user_id):
     return rows
 
 
-# gets ever single user_id, pulls all rows and returns them (yes its like a 4 dimensional list shut up)
-# if unique, will use a set since sets cant have unique items
+# gets ever single user_id, pulls all rows and returns them
+# if unique, will use a set since sets cant have duplicate items
 def get_all_ranking_rows(unique=False):
     final_rows = set() if unique else []
     user_ids = get_users()
@@ -346,25 +349,25 @@ async def display_rankings(year=datetime.now().year):
 
 
 # adds a row to a table for a given user
-async def add_row(user, artist, album, rating: float, album_id: int = 0):
-    user_id = user.id
+async def add_row(user_id, artist, album, rating: float, album_id: int = 0):
     cursor = conn.cursor()
-    await make_table(user)
-    if get_row_from_rankings(album=album, artist=artist, user_id=user_id) is not None:
-        raise ValueError("error: you cannot add 2 of the same album to your rankings")
+    await make_table(user_id)
     artist, album = (artist.strip(), album.strip())
     # we can just call add_to_album_master since it does a check to ensure that the album is not already in album_master
     await add_to_album_master(artist=artist, album=album, album_id=album_id)
     # now we get the formatted row from album_master
-    row = get_album_master_row(artist=artist, album=album, album_id=album_id)
+    artist, album, album_id, year, image = get_album_master_row(artist=artist, album=album, album_id=album_id)
+    if get_row_from_rankings(album=album, artist=artist, user_id=user_id) is not None:
+        raise ValueError("error: you cannot add 2 of the same album to your rankings")
     # add to the table
     cursor.execute(f'''INSERT INTO user_data_{user_id} (artists, title, rating)'''
-                   f'''VALUES(?, ?, ?)''', (row[0], row[1], rating))
-    if cursor.rowcount < 1:
+                   f'''VALUES(?, ?, ?)''', (artist, album, rating))
+    data = cursor.fetchall()
+    cursor.close()
+    if data is None:
         raise LookupError("error: no rows were added, which is confusing idk why that happened")
     conn.commit()
-    cursor.close()
-    return f"i successfully added {row[0]} - {row[1]} to your rankings"
+    return f"i successfully added {artist} - {album} to your rankings"
 
 
 # this just splits a message up by new lines and calls add_row until there are no more new lines
@@ -388,12 +391,13 @@ async def add_row_bulk(user_id, content):
 # edits a row in a given table
 async def edit_row(user_id, row, rating: float):
     await make_table(user_id)
-    # prevent an index out of bound exception
     # update rating value in corresponding row
     cursor = conn.cursor()
     cursor.execute(f'''UPDATE user_data_{user_id} SET rating = {rating}'''
-                   f''' WHERE artists = ? AND title = ?''', (row[0], row[1]))
-    if cursor.rowcount < 1:
+                   f''' WHERE artists = ? AND title = ? RETURNING *''', (row[0], row[1]))
+    data = cursor.fetchall()
+    cursor.close()
+    if data is None:
         raise LookupError("error: no rows were edited, which is confusing idk why that happened")
     conn.commit()
     return f"i successfully edited {row[0]} - {row[1]} to a {rating}/10.0"
@@ -404,10 +408,11 @@ async def remove_row(user_id, row):
     await make_table(user_id)
     cursor = conn.cursor()
     # prevent an index out of bound exception
-    cursor.execute(f"DELETE FROM user_data_{user_id} WHERE artists = ? AND title = ?", (row[0], row[1]))
-    conn.commit()
+    cursor.execute(f"DELETE FROM user_data_{user_id} WHERE artists = ? AND title = ? RETURNING *", (row[0], row[1]))
+    data = cursor.fetchall()
     cursor.close()
-    if cursor.rowcount < 1:
+    conn.commit()
+    if data is None:
         raise LookupError("error: no rows were deleted, whyy?????")
     else:
         await update_album_master()
@@ -419,21 +424,17 @@ async def remove_row(user_id, row):
 # if it finds one, it will return the full row that it was on.
 # also can take a user_id to only search rows specific to that user.
 # doubles as a check for exists function
+# row return structure - [artist, album, ratings, id, year, image_link]
 def get_row_from_rankings(album: str, artist: str = None, user_id=0):
     if user_id == 0:
         rows = get_all_ranking_rows(unique=True)
     else:
         rows = get_rows_from_user(user_id=user_id)
     final_list = []
-    # problem - if the user has an album twice in their album rankings, final_list will have a length greater than 1
-    # solution - if artist is not entered, tell them to enter an artist
-    # if artist is entered and the problem is encountered, return the first entry, it should be good enough
     for row in rows:
         row_album, album, row_artist, artist = strip_names(row[1], album, row[0], artist)
-        if row_album in album and (artist is None or row_artist in artist):
+        if album == row_album and (artist is None or artist == row_artist):
             final_list.append(row)
-    if len(final_list) > 1 and artist is None:
-        raise ValueError("error: duplicate albums detected in your list, please enter an artist")
     if len(final_list) == 0:
         return None
     return final_list[0]
@@ -536,45 +537,70 @@ def top_albums_autocomplete_helper(whoscallin: str, year=datetime.now().year, mi
 
 
 # AUTOCOMPLETE AND CHOICES SECTION-----------------------------------------------------------------------------------
+# autocomplete names fail if a choice is over 100 characters, so this will modify names to take that into account
+def autocomplete_slice_names_100(name):
+    length = len(name)
+    if length <= 100:
+        return name
+    # heres how we solve this problem. find the rightmost space character. slice there.
+    # find the length of the right string. take the substring of the first string
+    # so that the length of that plus and length of the right string add to 97
+    r_index = name.rfind(" ")
+    if r_index == -1:
+        r_index = 97
+    cut_title = name[:97 - (length - r_index) + 1] + "..." + name[r_index + 1:]
+    return cut_title
+
+
+# this takes in a list of (artist, album, value) and returns that list with all entries as less than 100 characters
+def autocomplete_slice_list_names(choices):
+    return [tuple(autocomplete_slice_names_100(name) if len(name) > 100 else name for name in choice) for choice in choices]
+
+
 # gets a list of artists in album_master and returns a list of choices for use in autocomplete
 async def autocomplete_artist(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [row[0] for row in get_album_master()]
+    final_list = {row[0] for row in get_album_master()}
     return [Choice(name=artist, value=artist)
             for artist in final_list if strip_names(current)[0] in strip_names(artist)[0]]
 
 
 # same as above, but it does albums with autocomplete
 async def autocomplete_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [row[1] for row in get_album_master()]
-    return [Choice(name=album, value=album)
-            for album in final_list if strip_names(current)[0] in strip_names(album)[0]]
+    albums = [(row[1], row[1]) for row in get_album_master()]
+    final_list = autocomplete_slice_list_names(albums)
+    return [Choice(name=album[0], value=album[1])
+            for album in final_list if strip_names(current)[0] in strip_names(album[0])[0]]
 
 
 # gets a formatted list of choices of artist - album using spotify search
 async def autocomplete_spotify(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    results = spotify.search_album(current)
-    return [Choice(name=f"{entry.artists[0].name} - {entry.name}",
-                   value=f"{entry.artists[0].name} ----- {entry.name} ----- {entry.id}") for entry in results]
+    results = await spotify.search_album(current)
+    choices = [(f"{entry.artists[0].name} - {entry.name}", f"{entry.id}") for entry in results]
+    final_choices = autocomplete_slice_list_names(choices)
+    return [Choice(name=f"{choice[0]}", value=f"{choice[1]}") for choice in final_choices]
 
 
 # gets a formatted list of choices of artist - album using album_master
 async def autocomplete_artist_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [(f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}") for row in get_album_master()]
+    user_albums = [(f"{row[0]} - {row[1]}", f"{row[2]}") for row in get_album_master()]
+    final_list = autocomplete_slice_list_names(user_albums)
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
 async def autocomplete_artist_album_user_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [(f"{row[0]} - {row[1]}", f"{row[0]} ----- {row[1]}") for row in get_rows_from_user(interaction.user.id)]
+    albums = [(f"{row[0]} - {row[1]}", f"{row[3]}") for row in get_rows_from_user(interaction.user.id)]
+    final_list = autocomplete_slice_list_names(albums)
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from homework
 async def autocomplete_artist_album_homework_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = [(f"{row[3]} - {row[4]}", f"{row[3]} ----- {row[4]} ----- {row[5]}")
-                  for row in homework.get_homework(conn=conn, user_id=interaction.user.id)]
+    homework_list = [(f"{row[3]} - {row[4]}", f"{row[5]}")
+                     for row in homework.get_homework(conn=conn, user_id=interaction.user.id)]
+    final_list = autocomplete_slice_list_names(homework_list)
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
 
@@ -618,7 +644,7 @@ async def update(interaction: discord.Interaction):
 # SHOW RANKINGS COMMAND - prints the ratings of the given year (default == current year)
 @tree.command(name="get_ratings", description="shows the ratings of a specific year", guild=my_guild)
 @app_commands.describe(year="the year of which you want the ratings")
-async def update(interaction: discord.Interaction, year: int = datetime.now().year):
+async def get_ratings(interaction: discord.Interaction, year: int = datetime.now().year):
     try:
         await interaction.response.send_message(await get_rankings_message(year=year))
     except Exception as error:
@@ -648,15 +674,15 @@ async def addmanual(interaction: discord.Interaction, artist: str, album: str, r
 @app_commands.autocomplete(searchkeywords=autocomplete_spotify)
 async def add(interaction: discord.Interaction, searchkeywords: str, rating: float):
     try:
-        if len(searchkeywords.split("-----")) != 3:
-            raise ValueError("error: improper formatting, please click on an autocomplete option or use addmanual")
-        artist, album, album_id = [enter.strip() for enter in searchkeywords.split("-----")]
-        await interaction.response.send_message(await add_row(
-            user=interaction.user, artist=artist, album=album, album_id=album_id, rating=rating))
+        artist, album, album_id, date, album_cover = spotify.get_album(album_id=searchkeywords)
+        await interaction.response.send_message(await add_row(artist=artist, album=album, user_id=interaction.user.id,
+                                                              album_id=album_id, rating=rating))
         # Remove from the homework, if it exists there
         homework.remove_homework(conn, interaction.user.id, album_id)
         spotify.remove_album_from_playlist(interaction.user, album_id)
-        await display_rankings()
+        print(date[:4])
+        if int(date[:4]) == datetime.now().year:
+            await display_rankings()
         await changelog_add_ranking(interaction.user, album_id, rating)
     except Exception as error:
         traceback.print_exc()
@@ -664,6 +690,7 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
 
 
 # BULK ADD COMMAND - add command that can be done with multiple albums at once (VERY PICKY FORMATTING)
+# this command it probably broken
 @tree.command(name="add_rating_bulk", description='add multiple albums to your rankings', guild=my_guild)
 @app_commands.describe(albums="the full list of albums you want to add. it should be in this format"
                               "\nArtist, Album Title, Rating (Next Line)")
@@ -686,15 +713,14 @@ async def addbulk(interaction: discord.Interaction, albums: str):
 @app_commands.autocomplete(entry=autocomplete_artist_album_user_specific)
 async def edit(interaction: discord.Interaction, entry: str, rating: float):
     try:
-        if len(entry.split("-----")) != 2:
-            raise ValueError("error: improper formatting, please click on an autocomplete option")
-        artist, album = [enter.strip() for enter in entry.split("-----")]
-        master_row = get_album_master_row(artist=artist, album=album)
+        artist, album, album_id, date, image = spotify.get_album(album_id=entry)
         user_row = get_row_from_rankings(album=album, artist=artist, user_id=interaction.user.id)
+        if user_row is None:
+            raise ValueError("error: you cannot edit a rating that isnt on your list")
         await interaction.response.send_message(await edit_row(
-            interaction.user.id, user_row, rating))
+            interaction.user.id, (artist, album), rating))
         await display_rankings()
-        await changelog_edit_ranking(interaction.user, master_row[2], user_row[2], rating)
+        await changelog_edit_ranking(user=interaction.user, album_id=album_id, old_rating=user_row[2], new_rating=rating)
     except Exception as error:
         traceback.print_exc()
         await interaction.response.send_message(content=error)
@@ -706,12 +732,10 @@ async def edit(interaction: discord.Interaction, entry: str, rating: float):
 @app_commands.autocomplete(entry=autocomplete_artist_album_user_specific)
 async def remove(interaction: discord.Interaction, entry: str):
     try:
-        if len(entry.split("-----")) != 2:
-            raise ValueError("error: improper formatting, please click on an autocomplete option")
-        artist, album = [enter.strip() for enter in entry.split("-----")]
-        album_id = get_album_master_row(artist=artist, album=album)[2]
-        await interaction.response.send_message(await remove_row(
-            interaction.user.id, get_row_from_rankings(album=album, artist=artist, user_id=interaction.user.id)))
+        artist, album, album_id, date, image = spotify.get_album(album_id=entry)
+        if get_row_from_rankings(album=album, artist=artist, user_id=interaction.user.id) is None:
+            raise ValueError("error, you cannot remove a row that doesnt exist in your rankings")
+        await interaction.response.send_message(await remove_row(interaction.user.id, (artist, album)))
         await display_rankings()
         await changelog_remove_ranking(interaction.user, album_id)
     except Exception as error:
@@ -725,14 +749,9 @@ async def remove(interaction: discord.Interaction, entry: str):
 @app_commands.autocomplete(entry=autocomplete_spotify)
 async def cover(interaction: discord.Interaction, entry: str):
     try:
-        if len(entry.split("-----")) != 3:
-            raise ValueError("error: improper formatting, please click on an autocomplete option")
-        artist, album, album_id = [enter.strip() for enter in entry.split("-----")]
-        row = get_album_master_row(album=album, artist=artist)
-        if row is None:
-            row = spotify.get_album(artist, album)
-        embed = discord.Embed(title=album, description=f"{artist} - {album}")
-        embed.set_image(url=row[4])
+        artist, album, album_id, date, album_cover = spotify.get_album(album_id=entry)
+        embed = discord.Embed(title=album, description=f"by {artist} - {date}")
+        embed.set_image(url=album_cover)
         await interaction.response.send_message(embed=embed)
     except Exception as error:
         traceback.print_exc()
@@ -745,14 +764,11 @@ async def cover(interaction: discord.Interaction, entry: str):
 @app_commands.autocomplete(entry=autocomplete_artist_album)
 async def stats(interaction: discord.Interaction, entry: str):
     try:
-        if len(entry.split("-----")) != 2:
-            raise ValueError("error: improper formatting, please click on an autocomplete option")
-        artist, album = [enter.strip() for enter in entry.split("-----")]
-        row = get_album_master_row(album=album, artist=artist)
-        if row is None:
+        artist, album, album_id, date, image = spotify.get_album(album_id=entry)
+        if get_row_from_rankings(album=album, artist=artist) is None:
             raise ValueError("error: you cannot get stats for an album that is not ranked by anyone")
-        album_cover = row[4]
-        embed = discord.Embed(title=album, description=get_album_stats(album=row[1], artist=row[0]))
+        album_cover = image
+        embed = discord.Embed(title=album, description=get_album_stats(album=album, artist=artist))
         embed.set_image(url=album_cover)
         await interaction.response.send_message(embed=embed)
     except Exception as error:
@@ -776,27 +792,22 @@ async def top_albums(interaction: discord.Interaction, numberofalbums: int = 5, 
 
 # ADD HOMEWORK - adds homework for a certain user
 @tree.command(name='add_homework', description='Add homework to someone\'s list', guild=my_guild)
-@app_commands.describe(entry="the artist - album you are trying to get (see autocomplete)",
+@app_commands.describe(entry="the artist - album you are trying to add (select an autocomplete option)",
                        user='the user whose homework list you\'re adding to')
 @app_commands.autocomplete(entry=autocomplete_spotify)
 async def add_homework(interaction: discord.Interaction, entry: str, user: discord.User = None):
     try:
         await interaction.response.defer()
+        artist, album, album_id, date, album_cover = spotify.get_album(album_id=entry)
         if user is None:
             user = interaction.user
-        if len(entry.split("-----")) != 3:
-            raise ValueError("error: improper formatting, please click on an autocomplete option")
-        artist, album, album_id = [enter.strip() for enter in entry.split("-----")]
-        row = get_album_master_row(album=album, artist=artist, album_id=album_id)
-        if row is None:
-            row = spotify.get_album(artist, album, album_id=album_id)
-            await add_to_album_master(artist=row[0], album=row[1], album_id=album_id)
+        await add_to_album_master(artist=artist, album=album, album_id=album_id)
         # Don't add it if user has already rated it
-        if get_row_from_rankings(album, artist, user.id) is not None:
-            raise ValueError(f"error: {user.mention} has already listened to {row[0]} - {row[1]}")
-        homework.add_homework(conn, user.id, row[2])
-        spotify.add_album_to_playlist(user, row[2])
-        await interaction.followup.send(f"i successfully added {row[0]} - {row[1]} to {user.mention}'s homework")
+        if get_row_from_rankings(artist=artist, album=album, user_id=user.id) is not None:
+            raise ValueError(f"error: {user.mention} has already listened to {artist} - {album}")
+        homework.add_homework(conn, user.id, album_id)
+        spotify.add_album_to_playlist(user, album_id)
+        await interaction.followup.send(f"i successfully added {artist} - {album} to {user.mention}'s homework")
         await changelog_add_homework(interaction.user, album_id, user)
     except Exception as error:
         traceback.print_exc()
@@ -826,14 +837,10 @@ async def get_homework(interaction: discord.Interaction, user: discord.User = No
 @app_commands.autocomplete(entry=autocomplete_artist_album_homework_specific)
 async def remove_homework(interaction: discord.Interaction, entry: str):
     try:
-        # splits entry into album, artist
-        if len(entry.split("-----")) != 3:
-            raise ValueError("error: improper formatting, please click on an autocomplete option")
-        artist, album, album_id = [enter.strip() for enter in entry.split("-----")]
         # fetches album from album_master and deletes it from the users homework table
-        await interaction.response.send_message(content=homework.remove_homework(conn, interaction.user.id, album_id), suppress_embeds=True)
+        await interaction.response.send_message(content=homework.remove_homework(conn, interaction.user.id, entry), suppress_embeds=True)
         await update_album_master()
-        await changelog_finish_homework(interaction.user, album_id)
+        await changelog_finish_homework(interaction.user, entry)
     except Exception as error:
         traceback.print_exc()
         await interaction.response.send_message(error)
