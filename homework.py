@@ -17,6 +17,8 @@ def add_homework(conn, user_id, album_id):
     return f"successfully added {len(data)} row to homework"
 
 
+# returns a specific users homework
+# list structure: [album_id, user_id, complete, artist, album, album_id, year, image url]
 def get_homework(conn, user_id, complete=0):
     create_homework_table(conn)
     cursor = conn.cursor()
