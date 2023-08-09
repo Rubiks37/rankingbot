@@ -89,7 +89,8 @@ async def changelog_add_ranking(user, album_id, rating):
     if not config.CHANGELOG_ACTIVE:
         return
     row = spotify.get_album(album_id=album_id)
-    await channel.send(f"RANKINGS: {user.mention} has rated {row[0]} - {row[1]} as a {rating}")
+    artist = ", ".join(row[0])
+    await channel.send(f"RANKINGS - {user.mention}:\n`rated {artist} - {row[1]} as a {rating}`")
     return
 
 
@@ -99,7 +100,8 @@ async def changelog_edit_ranking(user, album_id, old_rating, new_rating):
     if not config.CHANGELOG_ACTIVE:
         return
     row = spotify.get_album(album_id=album_id)
-    await channel.send(f"RANKINGS: {user.mention} has changed {row[0]} - {row[1]} from a {old_rating}/10.0 to a {new_rating}/10.0")
+    artist = ", ".join(row[0])
+    await channel.send(f"RANKINGS - {user.mention}:\n`changed {artist} - {row[1]} from a {old_rating}/10.0 to a {new_rating}/10.0`")
     return
 
 
@@ -110,7 +112,8 @@ async def changelog_remove_ranking(user, album_id):
     if not config.CHANGELOG_ACTIVE:
         return
     row = spotify.get_album(album_id=album_id)
-    await channel.send(f"RANKINGS: {user.mention} has removed {row[0]} - {row[1]} from their rankings")
+    artist = ", ".join(row[0])
+    await channel.send(f"RANKINGS - {user.mention}:\n`removed {artist} - {row[1]} from their rankings`")
     return
 
 
@@ -120,10 +123,11 @@ async def changelog_add_homework(user, album_id, user_affected):
     if not config.CHANGELOG_ACTIVE:
         return
     row = spotify.get_album(album_id=album_id)
+    artist = ", ".join(row[0])
     if user.id == user_affected.id:
-        await channel.send(f"HOMEWORK: {user.mention} has added {row[0]} - {row[1]} to their homework list")
+        await channel.send(f"HOMEWORK - {user.mention}:\n`added {artist} - {row[1]} to their homework list`")
     else:
-        await channel.send(f"HOMEWORK: {user.mention} has added {row[0]} - {row[1]} to {user_affected.mention}'s homework list")
+        await channel.send(f"HOMEWORK - {user.mention}:\n`added {artist} - {row[1]} to {user_affected.mention}'s homework list`")
     return
 
 
@@ -134,7 +138,8 @@ async def changelog_finish_homework(user, album_id):
     if not config.CHANGELOG_ACTIVE:
         return
     row = spotify.get_album(album_id=album_id)
-    await channel.send(f"HOMEWORK: {user.mention} has listened to {row[0]} - {row[1]}")
+    artist = ", ".join(row[0])
+    await channel.send(f"HOMEWORK - {user.mention}:\n`listened to {artist} - {row[1]}`")
     return
 
 
@@ -161,18 +166,19 @@ def make_album_master():
 
 # implementing a solution to the duplicate name problem, a master table of albums is needed.
 # this uses the search functionality of spotify to find an album name, adds it to a table and returns it
-async def add_to_album_master(artist: str, album: str, album_id: int = None):
+async def add_to_album_master(artist: tuple, album: str, album_id: int = None):
     cursor = conn.cursor()
     make_album_master()
     row = spotify.get_album(artist, album, album_id)
     if row is None:
         raise LookupError(f"error: no matches found in spotify for {artist} - {album}")
     # this line will prevent duplicate albums from being added
-    if get_album_master_row(album=row[1], artist=row[0], album_id=album_id, abort_early=True) is not None:
+    if get_album_master_row(album=row[1], artists=row[0], album_id=album_id, abort_early=True) is not None:
         return None
     year = row[3].split('-')[0]
-    cursor.execute(f'''INSERT INTO album_master (artist, album, id, year, image) VALUES (?, ?, ?, ?, ?)''',
-                   (row[0], row[1], row[2], year, row[4]))
+    artists = ".-....".join(row[0])
+    cursor.execute(f'''INSERT INTO album_master (artist, album, id, year, image) VALUES (?, ?, ?, ?, ?) RETURNING *''',
+                   (artists, row[1], row[2], year, row[4]))
     data = cursor.fetchall()
     cursor.close()
     if data is None:
@@ -183,12 +189,13 @@ async def add_to_album_master(artist: str, album: str, album_id: int = None):
 
 # function that removes a row from album_master (should be called on rows that are no longer in anyone's album ranking/homework)
 async def remove_from_album_master(album: str, artist=None):
-    row = get_album_master_row(artist=artist, album=album)
+    row = get_album_master_row(artists=artist, album=album)
+    artists = ".-....".join(artist)
     if row is None:
         # if artist is none, then this will look weird, but whatever
-        raise ValueError(f"error: could not find {artist} - {album} in album_master")
+        raise ValueError(f"error: could not find {album} in album_master")
     cursor = conn.cursor()
-    cursor.execute('''DELETE FROM album_master WHERE artist = ? AND album = ? RETURNING *''', (row[0], row[1]))
+    cursor.execute('''DELETE FROM album_master WHERE artist = ? AND album = ? RETURNING *''', (artists, row[1]))
     data = cursor.fetchall()
     cursor.close()
     if data is None:
@@ -203,28 +210,32 @@ def get_album_master():
     cursor.execute('''SELECT * FROM album_master''')
     output = cursor.fetchall()
     cursor.close()
-    return output
+    ret = [(tuple(row[0].split(".-....")), row[1], row[2], row[3], row[4]) for row in output]
+    return ret
 
 
 # grabs the full master album list and tries to find an album stored inside of it.
 # this can be used in 2 ways, either with the album id, or with the albun name (and maybe artist)
 # album_id is the best way to use it, so it will check if it can do this first
 # doubles as a does row exist function (set abort_early to true)
-def get_album_master_row(album: str = None, artist=None, album_id: int = None, abort_early=False):
+def get_album_master_row(album: str = None, artists: tuple = None, album_id: int = None, abort_early=False):
     if album is None and album_id is None:
         raise ValueError("error: no value entered for either album or album_id")
     # if album_id is defined, we just use that to search through the list.
     # we also don't need to consider abort early because it literally cannot put duplicate album ids in the masterlist
     if album_id is not None:
-        ret = next((row for row in get_album_master() if row[2] == album_id), None)
-        if ret is not None:
+        cursor = conn.cursor()
+        cursor.execute('''SELECT * FROM album_master WHERE id = ?''', (album_id,))
+        data = cursor.fetchall()
+        if len(data) != 0:
+            ret = (tuple(data[0][0].split(".-....")), data[0][1], data[0][2], data[0][3], data[0][4])
             return ret
 
     # if album_id is not defined or album ids don't match, we can still use the album names to find the row
     final_list = []
     for row in get_album_master():
-        row_album, album, row_artist, artist = strip_names(row[1], album, row[0], artist)
-        if (row_album in album) and (artist is None or row_artist in artist):
+        row_album, album, row_artist, artists = strip_names(row[1], album, row[0], "".join(artists))
+        if (row_album == album) and (row_artist in artists):
             if abort_early:
                 return row
             final_list.append(row)
@@ -244,6 +255,7 @@ async def update_album_master():
     user_albums = {(row[0], row[1]) for row in get_all_ranking_rows(unique=True)}
     homework_album_ids = {row[2] for row in homework.get_all_homework_rows(conn)}
     updated = 0
+    # checks for new albums in user_albums that havent been added and adds them to album_master
     for user_row in user_albums:
         if user_row not in {(row[0], row[1]) for row in master_rows}:
             await add_to_album_master(artist=user_row[0], album=user_row[1])
@@ -280,11 +292,12 @@ def get_rows_from_user(user_id):
     cursor.execute(f'''SELECT album_master.artist, album_master.album, user_data_{user_id}.rating, album_master.id, album_master.year, album_master.image FROM user_data_{user_id} INNER JOIN album_master ON user_data_{user_id}.artists = album_master.artist AND user_data_{user_id}.title = album_master.album ORDER BY rating DESC''')
     rows = cursor.fetchall()
     cursor.close()
-    return rows
+    return [(tuple(row[0].split(".-....")), row[1], row[2], row[3], row[4], row[5]) for row in rows]
 
 
 # gets ever single user_id, pulls all rows and returns them
 # if unique, will use a set since sets cant have duplicate items
+# returns [artist, album, rating, id, year, image_link]
 def get_all_ranking_rows(unique=False):
     final_rows = set() if unique else []
     user_ids = get_users()
@@ -302,7 +315,7 @@ def get_user_rankings_formatted(user_id, year=datetime.now().year):
     rows = [row for row in get_rows_from_user(user_id) if row[4] == year]
     rankings_str = ''
     for i, row in enumerate(rows):
-        ranking_str = f'{i + 1}. {row[0]} - {row[1]} ({row[2]})'
+        ranking_str = f'{i + 1}. ' + ", ".join(row[0]) + f' - {row[1]} ({row[2]})'
         rankings_str += ranking_str + '\n'
     return rankings_str
 
@@ -349,24 +362,26 @@ async def display_rankings(year=datetime.now().year):
 
 
 # adds a row to a table for a given user
-async def add_row(user_id, artist, album, rating: float, album_id: int = 0):
+async def add_row(user_id: int, artist: tuple, album: str, rating: float, album_id: int = 0):
     cursor = conn.cursor()
     await make_table(user_id)
-    artist, album = (artist.strip(), album.strip())
+    artist, album = (artist, album.strip())
     # we can just call add_to_album_master since it does a check to ensure that the album is not already in album_master
     await add_to_album_master(artist=artist, album=album, album_id=album_id)
     # now we get the formatted row from album_master
-    artist, album, album_id, year, image = get_album_master_row(artist=artist, album=album, album_id=album_id)
+    artist, album, album_id, year, image = get_album_master_row(artists=artist, album=album, album_id=album_id)
     if get_row_from_rankings(album=album, artist=artist, user_id=user_id) is not None:
         raise ValueError("error: you cannot add 2 of the same album to your rankings")
     # add to the table
+    artists = ".-....".join(artist)
     cursor.execute(f'''INSERT INTO user_data_{user_id} (artists, title, rating)'''
-                   f'''VALUES(?, ?, ?)''', (artist, album, rating))
+                   f'''VALUES(?, ?, ?)''', (artists, album, rating))
     data = cursor.fetchall()
     cursor.close()
     if data is None:
         raise LookupError("error: no rows were added, which is confusing idk why that happened")
     conn.commit()
+    artist = ", ".join(artist)
     return f"i successfully added {artist} - {album} to your rankings"
 
 
@@ -377,13 +392,12 @@ async def add_row_bulk(user_id, content):
     rows = content.split("\n")
     # check for incorrect formatting/blank entries
     for i, row in enumerate(rows):
-        if len(row) != 3:
-            raise SyntaxError(f"incorrect formatting (row {i} did not have 3 entries")
-        for item in row.split(',').strip():
-            if item is None:
-                raise SyntaxError(f"incorrect formatting (row {i} has a blank entry")
-        # adds row if all checks succeed
         row_to_add = row.split(',').strip()
+        if len(row_to_add) != 3:
+            raise SyntaxError(f"incorrect formatting (row {i} did not have 3 entries")
+        if "" == row_to_add:
+            raise SyntaxError(f"incorrect formatting (row {i} has a blank entry")
+        # adds row if all checks succeed
         await add_row(user_id, row_to_add[0], row_to_add[1], row_to_add[2])
     return f"i successfully added {len(rows)} albums to your rankings"
 
@@ -394,13 +408,14 @@ async def edit_row(user_id, row, rating: float):
     # update rating value in corresponding row
     cursor = conn.cursor()
     cursor.execute(f'''UPDATE user_data_{user_id} SET rating = {rating}'''
-                   f''' WHERE artists = ? AND title = ? RETURNING *''', (row[0], row[1]))
+                   f''' WHERE artists = ? AND title = ? RETURNING *''', (".-....".join(row[0]), row[1]))
     data = cursor.fetchall()
     cursor.close()
     if data is None:
         raise LookupError("error: no rows were edited, which is confusing idk why that happened")
     conn.commit()
-    return f"i successfully edited {row[0]} - {row[1]} to a {rating}/10.0"
+    artist = ", ".join(row[0])
+    return f"i successfully edited {artist} - {row[1]} to a {rating}/10.0"
 
 
 # removes a row from a certain users table
@@ -408,7 +423,7 @@ async def remove_row(user_id, row):
     await make_table(user_id)
     cursor = conn.cursor()
     # prevent an index out of bound exception
-    cursor.execute(f"DELETE FROM user_data_{user_id} WHERE artists = ? AND title = ? RETURNING *", (row[0], row[1]))
+    cursor.execute(f"DELETE FROM user_data_{user_id} WHERE artists = ? AND title = ? RETURNING *", (".-....".join(row[0]), row[1]))
     data = cursor.fetchall()
     cursor.close()
     conn.commit()
@@ -416,7 +431,8 @@ async def remove_row(user_id, row):
         raise LookupError("error: no rows were deleted, whyy?????")
     else:
         await update_album_master()
-        return f"i successfully deleted {row[0]} - {row[1]} from your list"
+        artist = ", ".join(row[0])
+        return f"i successfully deleted {artist} - {row[1]} from your list"
 
 
 # ALBUM STATS SECTION---------------------------------------------------------------------------------------------------
@@ -445,26 +461,27 @@ def get_row_from_rankings(album: str, artist: str = None, user_id=0):
 # if true, adds the rating associated to a list and returns the list
 def get_album_ratings(album, artist=None):
     album, artist = strip_names(album, artist)
-    ratings = []
+    ratings = tuple()
     for row in get_all_ranking_rows(unique=False):
-        row_album, row_artist = strip_names(row[1], row[0])
-        if row_album in album and (artist is None or row_artist in artist):
-            ratings.append(row[2])
+        row_album, row_artist = strip_names(row[1], "".join(row[0]))
+        if row_album in album and (artist is None or row_artist in "".join(artist)):
+            ratings += (row[2],)
     return ratings
 
 
 # we are only given an album or an artist, so we find the full formatted title using get_row
 # we can use those to get album rankings, and then run some simple statistics and print it (could add more statistics)
-def get_album_stats(album, artist=None):
-    row = get_album_master_row(album=album, artist=artist)
+def get_album_stats(album, artist=None, album_id=None):
+    row = get_album_master_row(album=album, artists=artist, album_id=album_id)
     if row is None:
         raise LookupError('error: no albums found matching the name \"' + album + '\"')
-    ratings = get_album_ratings(album=album)
+    ratings = get_album_ratings(album=album, artist=artist)
     num_ratings = len(ratings)
     if num_ratings == 0:
         return "This album has no ratings"
     mean = round(statistics.mean(ratings), 2)
-    final_string = f"Artist: {row[0]}\nAlbum: {row[1]}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
+    artist = ", ".join(row[0])
+    final_string = f"Artist: {artist}\nAlbum: {row[1]}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
     if len(ratings) > 1:
         std_deviation = round(statistics.stdev(ratings), 2)
         final_string += f"\nStandard Deviation: {std_deviation}"
@@ -475,13 +492,13 @@ def get_album_stats(album, artist=None):
 def get_all_ratings():
     # using a dictionary for this to map a tuple containing the artist and album titles to a tuple of ratings
     ratedict = dict()
-    for row in get_all_ranking_rows(unique=False):
-        ratings = ratedict.get((row[0], row[1], row[4]))
+    for artist, album, rating, album_id, year, image_link in get_all_ranking_rows(unique=False):
+        ratings = ratedict.get((artist, album, year))
         if ratings is None:
-            ratings = (row[2],)
+            ratings = (rating,)
         else:
-            ratings += (row[2],)
-        ratedict.update({(row[0], row[1], row[4]): ratings})
+            ratings += (rating,)
+        ratedict.update({(artist, album, year): ratings})
     return ratedict
 
 
@@ -507,14 +524,15 @@ def get_top_albums(top_number: int, min_ratings: int, year: int, sortby: str):
     return ret
 
 
-def get_top_albums_formatted(top_number: int = 3, min_ratings: int = 2, year: int = -1, sortby: str = "avg"):
+def get_top_albums_formatted(top_number: int = 5, min_ratings: int = 2, year: int = -1, sortby: str = "avg"):
     rankings = get_top_albums(top_number, min_ratings, year, sortby)
     if 'avg' in sortby:
         final_string = f"## Top {top_number} albums with at least {min_ratings} rating(s) according to average:"
     else:
         final_string = f"## Top {top_number} albums with at least {min_ratings} rating(s) according to standard deviation:"
     for key, value in rankings.items():
-        final_string += f"\n{key[0]} - {key[1]}: {value}"
+        artist = ", ".join(key[0])
+        final_string += f"\n{artist} - {key[1]}: {value}"
     return final_string
 
 
@@ -559,30 +577,30 @@ def autocomplete_slice_list_names(choices):
 
 # gets a list of artists in album_master and returns a list of choices for use in autocomplete
 async def autocomplete_artist(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    final_list = {row[0] for row in get_album_master()}
+    final_list = {", ".join(row[0]) for row in get_album_master()}
     return [Choice(name=artist, value=artist)
             for artist in final_list if strip_names(current)[0] in strip_names(artist)[0]]
 
 
 # same as above, but it does albums with autocomplete
 async def autocomplete_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    albums = [(row[1], row[1]) for row in get_album_master()]
+    albums = tuple((row[1],) for row in get_album_master())
     final_list = autocomplete_slice_list_names(albums)
-    return [Choice(name=album[0], value=album[1])
+    return [Choice(name=album[0], value=album[0])
             for album in final_list if strip_names(current)[0] in strip_names(album[0])[0]]
 
 
 # gets a formatted list of choices of artist - album using spotify search
 async def autocomplete_spotify(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     results = await spotify.search_album(current)
-    choices = [(f"{entry.artists[0].name} - {entry.name}", f"{entry.id}") for entry in results]
+    choices = [(", ".join(tuple(artist.name for artist in entry.artists)) + f" - {entry.name}", f"{entry.id}") for entry in results]
     final_choices = autocomplete_slice_list_names(choices)
     return [Choice(name=f"{choice[0]}", value=f"{choice[1]}") for choice in final_choices]
 
 
 # gets a formatted list of choices of artist - album using album_master
 async def autocomplete_artist_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    user_albums = [(f"{row[0]} - {row[1]}", f"{row[2]}") for row in get_album_master()]
+    user_albums = [(", ".join (row[0]) + f" - {row[1]}", f"{row[2]}") for row in get_album_master()]
     final_list = autocomplete_slice_list_names(user_albums)
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
@@ -590,7 +608,7 @@ async def autocomplete_artist_album(interaction: discord.Interaction, current: s
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
 async def autocomplete_artist_album_user_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    albums = [(f"{row[0]} - {row[1]}", f"{row[3]}") for row in get_rows_from_user(interaction.user.id)]
+    albums = [(", ".join (row[0]) + f" - {row[1]}", f"{row[3]}") for row in get_rows_from_user(interaction.user.id)]
     final_list = autocomplete_slice_list_names(albums)
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()]
@@ -598,7 +616,7 @@ async def autocomplete_artist_album_user_specific(interaction: discord.Interacti
 
 # gets formatted choices for artist/album when editing/deleting rows from homework
 async def autocomplete_artist_album_homework_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    homework_list = [(f"{row[3]} - {row[4]}", f"{row[5]}")
+    homework_list = [row[3].replace("....-.", ", ") + (f"{row[3]} - {row[4]}", f"{row[5]}")
                      for row in homework.get_homework(conn=conn, user_id=interaction.user.id)]
     final_list = autocomplete_slice_list_names(homework_list)
     return [Choice(name=entry[0], value=entry[1])
@@ -660,6 +678,7 @@ async def get_ratings(interaction: discord.Interaction, year: int = datetime.now
 @app_commands.autocomplete(artist=autocomplete_artist, album=autocomplete_album)
 async def addmanual(interaction: discord.Interaction, artist: str, album: str, rating: float):
     try:
+        artist = tuple(artist.split(","))
         await interaction.response.send_message(
             await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
         await display_rankings()
@@ -680,7 +699,6 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
         # Remove from the homework, if it exists there
         homework.remove_homework(conn, interaction.user.id, album_id)
         spotify.remove_album_from_playlist(interaction.user, album_id)
-        print(date[:4])
         if int(date[:4]) == datetime.now().year:
             await display_rankings()
         await changelog_add_ranking(interaction.user, album_id, rating)
@@ -750,7 +768,7 @@ async def remove(interaction: discord.Interaction, entry: str):
 async def cover(interaction: discord.Interaction, entry: str):
     try:
         artist, album, album_id, date, album_cover = spotify.get_album(album_id=entry)
-        embed = discord.Embed(title=album, description=f"by {artist} - {date}")
+        embed = discord.Embed(title=album, description=f"by " + ", ".join(artist) + f" - {date}")
         embed.set_image(url=album_cover)
         await interaction.response.send_message(embed=embed)
     except Exception as error:
@@ -768,7 +786,7 @@ async def stats(interaction: discord.Interaction, entry: str):
         if get_row_from_rankings(album=album, artist=artist) is None:
             raise ValueError("error: you cannot get stats for an album that is not ranked by anyone")
         album_cover = image
-        embed = discord.Embed(title=album, description=get_album_stats(album=album, artist=artist))
+        embed = discord.Embed(title=album, description=get_album_stats(album=album, artist=artist, album_id=album_id))
         embed.set_image(url=album_cover)
         await interaction.response.send_message(embed=embed)
     except Exception as error:
@@ -803,11 +821,12 @@ async def add_homework(interaction: discord.Interaction, entry: str, user: disco
             user = interaction.user
         await add_to_album_master(artist=artist, album=album, album_id=album_id)
         # Don't add it if user has already rated it
+        artists = ", ".join(artist)
         if get_row_from_rankings(artist=artist, album=album, user_id=user.id) is not None:
-            raise ValueError(f"error: {user.mention} has already listened to {artist} - {album}")
+            raise ValueError(f"error: {user.mention} has already listened to {artists} - {album}")
         homework.add_homework(conn, user.id, album_id)
         spotify.add_album_to_playlist(user, album_id)
-        await interaction.followup.send(f"i successfully added {artist} - {album} to {user.mention}'s homework")
+        await interaction.followup.send(f"i successfully added {artists} - {album} to {user.mention}'s homework")
         await changelog_add_homework(interaction.user, album_id, user)
     except Exception as error:
         traceback.print_exc()
