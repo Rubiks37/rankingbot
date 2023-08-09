@@ -26,8 +26,9 @@ def get_homework(conn, user_id, complete=0):
                    INNER JOIN album_master ON homework.album_id = album_master.id
                    WHERE user_id = ? AND complete = ?''', (user_id, complete))
     data = cursor.fetchall()
+    ret = [(dat[0], dat[1], dat[2], tuple(dat[3].split(".-....")), dat[4], dat[5], dat[6], dat[7]) for dat in data]
     cursor.close()
-    return data
+    return ret
 
 
 def get_all_homework_rows(conn, complete=0):
@@ -37,15 +38,16 @@ def get_all_homework_rows(conn, complete=0):
                    INNER JOIN album_master ON homework.album_id = album_master.id
                    WHERE complete = ?''', (complete,))
     data = cursor.fetchall()
+    ret = [(dat[0], dat[1], dat[2], tuple(dat[3].split(".-....")), dat[4], dat[5], dat[6], dat[7]) for dat in data]
     cursor.close()
-    return data
+    return ret
 
 
 def get_homework_formatted(conn, user, complete=0):
     data = get_homework(conn, user.id, complete)
     output = f'## Homework of {user.mention}\n'
     for i, row in enumerate(data):
-        output += f'{i + 1}. {row[3]} - {row[4]} ({row[6]})\n'
+        output += f'{i + 1}. ' + ", ".join(row[3]) + f' - {row[4]} ({row[6]})\n'
     if len(data) == 0:
         output += f"{user.display_name} doesn't have any homework at the moment\n"
     return output + f"\nPlaylist URL: {spotify.get_playlist(user).url}"
@@ -61,8 +63,9 @@ def get_homework_row(conn, album_id):
     data = cursor.fetchall()
     if len(data) == 0:
         return None
+    ret = [(dat[0], dat[1], dat[2], tuple(dat[3].split(".-....")), dat[4], dat[5], dat[6], dat[7]) for dat in data]
     cursor.close()
-    return data[0]
+    return ret[0]
 
 
 def remove_homework(conn, user_id, album_id):
