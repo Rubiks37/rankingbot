@@ -9,6 +9,7 @@ import statistics
 import spotify_integration as spotify
 import homework
 
+
 # set up Discord Bot with read and write message privileges, but without mentioning privileges
 intents = discord.Intents.default()
 intents.message_content = True
@@ -860,6 +861,31 @@ async def remove_homework(interaction: discord.Interaction, entry: str):
         await interaction.response.send_message(content=homework.remove_homework(conn, interaction.user.id, entry), suppress_embeds=True)
         await update_album_master()
         await changelog_finish_homework(interaction.user, entry)
+    except Exception as error:
+        traceback.print_exc()
+        await interaction.response.send_message(error)
+
+
+# ADD ALL HOMEWORK - adds homework to everyones homework
+@tree.command(name='add_all_homework', description='add homework to everyones list', guild=my_guild)
+@app_commands.describe(entry="the artist - album you are trying to add to everyones list (see autocomplete)")
+@app_commands.autocomplete(entry=autocomplete_spotify)
+async def add_all_homework(interaction: discord.Interaction, entry: str):
+    try:
+        # gets all users and adds a specific album to their homework
+        added = 0
+        for user in get_users():
+            try:
+                homework.add_homework(conn, user, entry)
+                added += 1
+                user_obj = await client.fetch_user(user)
+                await changelog_add_homework(user_obj, entry, user_obj)
+            except ValueError:
+                pass
+            except Exception as error:
+                raise error
+        await interaction.response.send_message(content=f"i successfully added new homwork to {added} users homework")
+        await update_album_master()
     except Exception as error:
         traceback.print_exc()
         await interaction.response.send_message(error)
