@@ -884,7 +884,8 @@ async def add_all_homework(interaction: discord.Interaction, entry: str):
                 pass
             except Exception as error:
                 raise error
-        await interaction.response.send_message(content=f"i successfully added new homwork to {added} users homework")
+        row = spotify.get_album(album_id=entry)
+        await interaction.response.send_message(content=f"i successfully added {row[0]} - {row[1]} to {added} users homework")
         await update_album_master()
     except Exception as error:
         traceback.print_exc()
