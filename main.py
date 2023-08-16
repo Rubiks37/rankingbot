@@ -872,6 +872,7 @@ async def remove_homework(interaction: discord.Interaction, entry: str):
 @app_commands.autocomplete(entry=autocomplete_spotify)
 async def add_all_homework(interaction: discord.Interaction, entry: str):
     try:
+        interaction.response.defer()
         # gets all users and adds a specific album to their homework
         added = 0
         for user in get_users():
@@ -885,7 +886,7 @@ async def add_all_homework(interaction: discord.Interaction, entry: str):
             except Exception as error:
                 raise error
         row = spotify.get_album(album_id=entry)
-        await interaction.response.send_message(content=f"i successfully added {row[0]} - {row[1]} to {added} users homework")
+        await interaction.followup.send(content=f"i successfully added {row[0]} - {row[1]} to {added} users homework")
         await update_album_master()
     except Exception as error:
         traceback.print_exc()
