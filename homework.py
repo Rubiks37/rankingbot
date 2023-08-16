@@ -1,4 +1,5 @@
 import spotify_integration as spotify
+import sqlite3
 
 
 def create_homework_table(conn):
@@ -10,7 +11,10 @@ def create_homework_table(conn):
 def add_homework(conn, user_id, album_id):
     create_homework_table(conn)
     cursor = conn.cursor()
-    cursor.execute('''INSERT INTO homework (album_id, user_id, complete) VALUES (?, ?, 0) RETURNING *''', (album_id, user_id))
+    try:
+        cursor.execute('''INSERT INTO homework (album_id, user_id, complete) VALUES (?, ?, 0) RETURNING *''', (album_id, user_id))
+    except sqlite3.IntegrityError:
+        raise ValueError("error: you cannot add duplicate entries into your homework list")
     data = cursor.fetchall()
     cursor.close()
     conn.commit()
