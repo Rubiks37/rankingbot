@@ -167,7 +167,7 @@ def make_album_master():
 
 # implementing a solution to the duplicate name problem, a master table of albums is needed.
 # this uses the search functionality of spotify to find an album name, adds it to a table and returns it
-async def add_to_album_master(artist: tuple, album: str, album_id: int = None):
+async def add_to_album_master(artist: tuple, album: str, album_id=None):
     cursor = conn.cursor()
     make_album_master()
     row = spotify.get_album(artist, album, album_id)
@@ -873,6 +873,8 @@ async def remove_homework(interaction: discord.Interaction, entry: str):
 async def add_all_homework(interaction: discord.Interaction, entry: str):
     try:
         await interaction.response.defer()
+        row = spotify.get_album(album_id=entry)
+        await add_to_album_master(artist=row[0], album=row[1], album_id=entry)
         # gets all users and adds a specific album to their homework
         added = 0
         for user in get_users():
@@ -880,13 +882,14 @@ async def add_all_homework(interaction: discord.Interaction, entry: str):
                 homework.add_homework(conn, user, entry)
                 added += 1
                 user_obj = await client.fetch_user(user)
+                spotify.add_album_to_playlist(user_obj, entry)
                 await changelog_add_homework(user_obj, entry, user_obj)
             except ValueError:
                 pass
             except Exception as error:
                 raise error
-        row = spotify.get_album(album_id=entry)
-        await interaction.followup.send(content=f"i successfully added {row[0]} - {row[1]} to {added} users homework")
+        artists = ", ".join(row[0])
+        await interaction.followup.send(content=f"i successfully added {artists} - {row[1]} to {added} users homework")
         await update_album_master()
     except Exception as error:
         traceback.print_exc()
