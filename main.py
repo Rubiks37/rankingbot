@@ -872,7 +872,7 @@ async def remove_homework(interaction: discord.Interaction, entry: str):
 @app_commands.autocomplete(entry=autocomplete_spotify)
 async def add_all_homework(interaction: discord.Interaction, entry: str):
     try:
-        interaction.response.defer()
+        await interaction.response.defer()
         # gets all users and adds a specific album to their homework
         added = 0
         for user in get_users():
