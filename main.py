@@ -617,7 +617,7 @@ async def autocomplete_artist_album_user_specific(interaction: discord.Interacti
 
 # gets formatted choices for artist/album when editing/deleting rows from homework
 async def autocomplete_artist_album_homework_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    homework_list = [row[3].replace("....-.", ", ") + (f"{row[3]} - {row[4]}", f"{row[5]}")
+    homework_list = [(", ".join(row[3]) + f" - {row[4]}", f"{row[5]}")
                      for row in homework.get_homework(conn=conn, user_id=interaction.user.id)]
     final_list = autocomplete_slice_list_names(homework_list)
     return [Choice(name=entry[0], value=entry[1])
