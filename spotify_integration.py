@@ -28,7 +28,7 @@ def get_album(artist_name: tuple = None, album_name=None, album_id=None):
 
 
 async def search_album(current):
-    results = spotifyClient.search(f"{current}", types=["album"], limit=10)
+    results = spotifyClient.search(f"{current}", types=["album"], limit=25)
     return tuple(results[2])
 
 
