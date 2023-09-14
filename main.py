@@ -263,9 +263,8 @@ async def update_album_master():
             updated += 1
     for master_row in master_rows:
         if (master_row[0], master_row[1]) not in user_albums and master_row[2] not in homework_album_ids:
-            if homework.get_homework_row(conn=conn, album_id=master_row[2]) is None:
-                await remove_from_album_master(artist=master_row[0], album=master_row[1])
-                updated += 1
+            await remove_from_album_master(artist=master_row[0], album=master_row[1])
+            updated += 1
     return updated
 
 
@@ -580,7 +579,7 @@ def autocomplete_slice_list_names(choices):
 async def autocomplete_artist(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     final_list = {", ".join(row[0]) for row in get_album_master()}
     return [Choice(name=artist, value=artist)
-            for artist in final_list[:25] if strip_names(current)[0] in strip_names(artist)[0]]
+            for artist in final_list if strip_names(current)[0] in strip_names(artist)[0]][:25]
 
 
 # same as above, but it does albums with autocomplete
@@ -588,7 +587,7 @@ async def autocomplete_album(interaction: discord.Interaction, current: str) -> 
     albums = tuple((row[1],) for row in get_album_master())
     final_list = autocomplete_slice_list_names(albums)
     return [Choice(name=album[0], value=album[0])
-            for album in final_list[:25] if strip_names(current)[0] in strip_names(album[0])[0]]
+            for album in final_list if strip_names(current)[0] in strip_names(album[0])[0]][:25]
 
 
 # gets a formatted list of choices of artist - album using spotify search
@@ -596,15 +595,15 @@ async def autocomplete_spotify(interaction: discord.Interaction, current: str) -
     results = await spotify.search_album(current)
     choices = [(", ".join(tuple(artist.name for artist in entry.artists)) + f" - {entry.name}", f"{entry.id}") for entry in results]
     final_choices = autocomplete_slice_list_names(choices)
-    return [Choice(name=f"{choice[0]}", value=f"{choice[1]}") for choice in final_choices[:25]]
+    return [Choice(name=f"{choice[0]}", value=f"{choice[1]}") for choice in final_choices][:25]
 
 
 # gets a formatted list of choices of artist - album using album_master
 async def autocomplete_artist_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    user_albums = [(", ".join (row[0]) + f" - {row[1]}", f"{row[2]}") for row in get_album_master()]
+    user_albums = [(", ".join(row[0]) + f" - {row[1]}", f"{row[2]}") for row in get_album_master()]
     final_list = autocomplete_slice_list_names(user_albums)
     return [Choice(name=entry[0], value=entry[1])
-            for entry in final_list[:25] if current.lower() in entry[0].lower()]
+            for entry in final_list if current.lower() in entry[0].lower()][:25]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
@@ -612,7 +611,7 @@ async def autocomplete_artist_album_user_specific(interaction: discord.Interacti
     albums = [(", ".join (row[0]) + f" - {row[1]}", f"{row[3]}") for row in get_rows_from_user(interaction.user.id)]
     final_list = autocomplete_slice_list_names(albums)
     return [Choice(name=entry[0], value=entry[1])
-            for entry in final_list[:25] if current.lower() in entry[0].lower()]
+            for entry in final_list if current.lower() in entry[0].lower()][:25]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from homework
@@ -621,7 +620,7 @@ async def autocomplete_artist_album_homework_specific(interaction: discord.Inter
                      for row in homework.get_homework(conn=conn, user_id=interaction.user.id)]
     final_list = autocomplete_slice_list_names(homework_list)
     return [Choice(name=entry[0], value=entry[1])
-            for entry in final_list[:25] if current.lower() in entry[0].lower()]
+            for entry in final_list if current.lower() in entry[0].lower()][:25]
 
 
 # gets choices for num albums as part of top_albums command
@@ -903,6 +902,7 @@ async def sync(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
         await sync_commands()
+        await update_album_master()
         await interaction.followup.send(content="sync successful")
     except Exception as error:
         await interaction.followup.send(content=error)
