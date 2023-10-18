@@ -188,7 +188,8 @@ async def add_to_album_master(artist: tuple, album: str, album_id=None):
     return row
 
 
-# function that removes a row from album_master (should be called on rows that are no longer in anyone's album ranking/homework)
+# function that removes a row from album_master
+# (should be called on rows that are no longer in anyone's album ranking/homework)
 async def remove_from_album_master(album: str, artist=None):
     row = get_album_master_row(artists=artist, album=album)
     artists = ".-....".join(artist)
@@ -299,7 +300,7 @@ def get_rows_from_user(user_id):
 # if unique, will use a set since sets cant have duplicate items
 # returns [artist, album, rating, id, year, image_link]
 def get_all_ranking_rows(unique=False):
-    final_rows = set() if unique else []
+    final_rows = set() if unique else list()
     user_ids = get_users()
     for user_id in user_ids:
         rows = get_rows_from_user(user_id)
@@ -570,6 +571,19 @@ def autocomplete_slice_names_100(name):
     return cut_title
 
 
+# some of these functions wont work properly if there aren't exact matches which is bad, so this is a search function
+# it goes through each word in a string and tries to find if there are matching words in the current string
+def autocomplete_search_list(current_str: str, strs_to_search: tuple):
+    translate_table = str.maketrans('', '', '\'",-.!/():')
+    current_words = current_str.translate(translate_table).split(' ')
+    return_list = list()
+    for item in strs_to_search:
+        tuple_to_search = tuple(item[0].translate(translate_table).split(' '))
+        if all([any([string1.lower() in string2.lower() for string2 in tuple_to_search]) for string1 in current_words]):
+            return_list.append(item)
+    return return_list
+
+
 # this takes in a list of (artist, album, value) and returns that list with all entries as less than 100 characters
 def autocomplete_slice_list_names(choices):
     return [tuple(autocomplete_slice_names_100(name) if len(name) > 100 else name for name in choice) for choice in choices]
@@ -600,10 +614,10 @@ async def autocomplete_spotify(interaction: discord.Interaction, current: str) -
 
 # gets a formatted list of choices of artist - album using album_master
 async def autocomplete_artist_album(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    user_albums = [(", ".join(row[0]) + f" - {row[1]}", f"{row[2]}") for row in get_album_master()]
-    final_list = autocomplete_slice_list_names(user_albums)
-    return [Choice(name=entry[0], value=entry[1])
-            for entry in final_list if current.lower() in entry[0].lower()][:25]
+    user_albums = tuple([(", ".join(row[0]) + f" - {row[1]}", f"{row[2]}") for row in get_album_master()])
+    half_final_list = autocomplete_search_list(current, user_albums)
+    final_list = autocomplete_slice_list_names(half_final_list)
+    return [Choice(name=entry[0], value=entry[1]) for entry in final_list][:25]
 
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
