@@ -1,5 +1,5 @@
 from datetime import datetime
-import traceback
+from traceback import print_exc
 import discord
 from discord import app_commands
 from discord.app_commands import Choice
@@ -35,7 +35,6 @@ async def sync_commands():
 
 # all the following functions will be needed to help make the app commands more readable and easier to follow
 
-
 # there will be an error if a final message is over 2000 characters
 # this code will split it up
 def split_message(content):
@@ -62,7 +61,7 @@ def split_message_rough(content):
 
 
 # strips names down to alphanumeric characters - useful for people doing things with different symbols/capitalization
-# if none is inputted, itll just append none
+# if none is inputted, it'll just append none
 def strip_names(*args):
     final = []
     for arg in args:
@@ -153,7 +152,7 @@ async def changelog_new_user(user):
 
 
 # ALBUM_MASTER TABLE INTERACTIONS SECTION------------------------------------------------------------------------------
-# album_master is a table that has every single album that is currently in anyone's rankngs/homework currently stored
+# album_master is a table that has every single album that is currently in anyone's rankings/homework currently stored
 # it stores properly formatted artist name (0), album name (1), the spotify album id (2),
 # the release year (3) and a hyperlink to the cover image (4)
 # this function will create that table
@@ -217,7 +216,7 @@ def get_album_master():
 
 
 # grabs the full master album list and tries to find an album stored inside of it.
-# this can be used in 2 ways, either with the album id, or with the albun name (and maybe artist)
+# this can be used in 2 ways, either with the album id, or with the album name (and maybe artist)
 # album_id is the best way to use it, so it will check if it can do this first
 # doubles as a does row exist function (set abort_early to true)
 def get_album_master_row(album: str = None, artists: tuple = None, album_id: int = None, abort_early=False):
@@ -257,7 +256,7 @@ async def update_album_master():
     user_albums = {(row[0], row[1]) for row in get_all_ranking_rows(unique=True)}
     homework_album_ids = {row[2] for row in homework.get_all_homework_rows(conn)}
     updated = 0
-    # checks for new albums in user_albums that havent been added and adds them to album_master
+    # checks for new albums in user_albums that haven't been added and adds them to album_master
     for user_row in user_albums:
         if user_row not in {(row[0], row[1]) for row in master_rows}:
             await add_to_album_master(artist=user_row[0], album=user_row[1])
@@ -489,21 +488,21 @@ def get_album_stats(album, artist=None, album_id=None):
     return final_string
 
 
-# this will get the ratings of every single album and return a dcitionary - tuple (artist, album) : tuple (ratings)
+# this will get the ratings of every single album and return a dictionary - tuple (artist, album) : tuple (ratings)
 def get_all_ratings():
     # using a dictionary for this to map a tuple containing the artist and album titles to a tuple of ratings
-    ratedict = dict()
+    all_ratings = dict()
     for artist, album, rating, album_id, year, image_link in get_all_ranking_rows(unique=False):
-        ratings = ratedict.get((artist, album, year))
+        ratings = all_ratings.get((artist, album, year))
         if ratings is None:
             ratings = (rating,)
         else:
             ratings += (rating,)
-        ratedict.update({(artist, album, year): ratings})
-    return ratedict
+        all_ratings.update({(artist, album, year): ratings})
+    return all_ratings
 
 
-def get_top_albums(top_number: int, min_ratings: int, year: int, sortby: str):
+def get_top_albums(top_number: int, min_ratings: int, year: int, sort_by: str):
     all_ratings = {key: value for key, value in get_all_ratings().items() if len(value) >= min_ratings and
                    (year == -1 or year == key[2])}
     # error raising for invalid parameters
@@ -512,7 +511,7 @@ def get_top_albums(top_number: int, min_ratings: int, year: int, sortby: str):
     if 0 < top_number and top_number > len(all_ratings):
         raise ValueError("error: not enough albums to rank (or you entered a negative value)")
 
-    if "avg" in sortby:
+    if "avg" in sort_by:
         sortdict = dict(sorted({key: round(statistics.mean(value), 2) for key, value in all_ratings.items()}.items(), key=lambda ratings: ratings[1], reverse=True))
     else:
         if min_ratings < 2:
@@ -559,15 +558,16 @@ def top_albums_autocomplete_helper(whoscallin: str, year=datetime.now().year, mi
 # autocomplete names fail if a choice is over 100 characters, so this will modify names to take that into account
 def autocomplete_slice_names_100(name):
     length = len(name)
+    right_cutoff = 97
     if length <= 100:
         return name
-    # heres how we solve this problem. find the rightmost space character. slice there.
+    # here's how we solve this problem. find the rightmost space character. slice there.
     # find the length of the right string. take the substring of the first string
     # so that the length of that plus and length of the right string add to 97
     r_index = name.rfind(" ")
     if r_index == -1:
-        r_index = 97
-    cut_title = name[:97 - (length - r_index) + 1] + "..." + name[r_index + 1:]
+        r_index = right_cutoff
+    cut_title = name[:right_cutoff - (length - r_index) + 1] + "..." + name[r_index + 1:]
     return cut_title
 
 
@@ -607,7 +607,7 @@ async def autocomplete_album(interaction: discord.Interaction, current: str) -> 
 # gets a formatted list of choices of artist - album using spotify search
 async def autocomplete_spotify(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     results = await spotify.search_album(current)
-    choices = [(", ".join(tuple(artist.name for artist in entry.artists)) + f" - {entry.name}", f"{entry.id}") for entry in results]
+    choices = [(", ".join(tuple(artist.name for artist in entry.artists)) + f" ({entry.type}) - {entry.name}", f"{entry.id}") for entry in results]
     final_choices = autocomplete_slice_list_names(choices)
     return [Choice(name=f"{choice[0]}", value=f"{choice[1]}") for choice in final_choices][:25]
 
@@ -622,7 +622,7 @@ async def autocomplete_artist_album(interaction: discord.Interaction, current: s
 
 # gets formatted choices for artist/album when editing/deleting rows from the list
 async def autocomplete_artist_album_user_specific(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    albums = [(", ".join (row[0]) + f" - {row[1]}", f"{row[3]}") for row in get_rows_from_user(interaction.user.id)]
+    albums = [(", ".join(row[0]) + f" - {row[1]}", f"{row[3]}") for row in get_rows_from_user(interaction.user.id)]
     final_list = autocomplete_slice_list_names(albums)
     return [Choice(name=entry[0], value=entry[1])
             for entry in final_list if current.lower() in entry[0].lower()][:25]
@@ -669,7 +669,7 @@ async def update(interaction: discord.Interaction):
     try:
         await interaction.response.send_message(await display_rankings())
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
@@ -680,7 +680,7 @@ async def get_ratings(interaction: discord.Interaction, year: int = datetime.now
     try:
         await interaction.response.send_message(await get_rankings_message(year=year))
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
@@ -697,7 +697,7 @@ async def addmanual(interaction: discord.Interaction, artist: str, album: str, r
             await add_row(user_id=interaction.user.id, artist=artist, album=album, rating=rating))
         await display_rankings()
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
@@ -717,7 +717,7 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
             await display_rankings()
         await changelog_add_ranking(interaction.user, album_id, rating)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
@@ -734,7 +734,7 @@ async def addbulk(interaction: discord.Interaction, albums: str):
         if config.CHANGELOG_ACTIVE:
             await changelog_channel.send(f"{interaction.user.mention} just added a bunch of new albums to their rankings")
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
@@ -754,7 +754,7 @@ async def edit(interaction: discord.Interaction, entry: str, rating: float):
         await display_rankings()
         await changelog_edit_ranking(user=interaction.user, album_id=album_id, old_rating=user_row[2], new_rating=rating)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
@@ -771,7 +771,7 @@ async def remove(interaction: discord.Interaction, entry: str):
         await display_rankings()
         await changelog_remove_ranking(interaction.user, album_id)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(error)
 
 
@@ -786,7 +786,7 @@ async def cover(interaction: discord.Interaction, entry: str):
         embed.set_image(url=album_cover)
         await interaction.response.send_message(embed=embed)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(error)
 
 
@@ -804,7 +804,7 @@ async def stats(interaction: discord.Interaction, entry: str):
         embed.set_image(url=album_cover)
         await interaction.response.send_message(embed=embed)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(error)
 
 
@@ -818,7 +818,7 @@ async def top_albums(interaction: discord.Interaction, numberofalbums: int = 5, 
     try:
         await interaction.response.send_message(get_top_albums_formatted(numberofalbums, minimumratings, year, sortby))
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(error)
 
 
@@ -843,7 +843,7 @@ async def add_homework(interaction: discord.Interaction, entry: str, user: disco
         await interaction.followup.send(f"i successfully added {artists} - {album} to {user.mention}'s homework")
         await changelog_add_homework(interaction.user, album_id, user)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.followup.send(error)
 
 
@@ -860,7 +860,7 @@ async def get_homework(interaction: discord.Interaction, user: discord.User = No
         for msg in fragments[1:]:
             await interaction.channel.send(msg, suppress_embeds=True)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(error)
 
 
@@ -875,7 +875,7 @@ async def remove_homework(interaction: discord.Interaction, entry: str):
         await update_album_master()
         await changelog_finish_homework(interaction.user, entry)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(error)
 
 
@@ -905,7 +905,7 @@ async def add_all_homework(interaction: discord.Interaction, entry: str):
         await interaction.followup.send(content=f"i successfully added {artists} - {row[1]} to {added} users homework")
         await update_album_master()
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(error)
 
 
@@ -930,7 +930,7 @@ async def updatealbummaster(interaction: discord.Interaction):
         await interaction.response.send_message(
             content=f"successfully updated {await update_album_master()} entries in album_master")
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
@@ -944,7 +944,7 @@ async def sqlite3(interaction: discord.Interaction, command: str):
         cursor.execute(command)
         await interaction.response.send_message(content=cursor.fetchall())
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
     finally:
         cursor.close()
@@ -963,7 +963,7 @@ async def getalbummaster(interaction: discord.Interaction):
         for msg in result[1:]:
             await interaction.channel.send(msg)
     except Exception as error:
-        traceback.print_exc()
+        print_exc()
         await interaction.response.send_message(content=error)
 
 
