@@ -558,16 +558,14 @@ def top_albums_autocomplete_helper(whoscallin: str, year=datetime.now().year, mi
 # autocomplete names fail if a choice is over 100 characters, so this will modify names to take that into account
 def autocomplete_slice_names_100(name):
     length = len(name)
-    right_cutoff = 97
     if length <= 100:
         return name
     # here's how we solve this problem. find the rightmost space character. slice there.
     # find the length of the right string. take the substring of the first string
     # so that the length of that plus and length of the right string add to 97
-    r_index = name.rfind(" ")
-    if r_index == -1:
-        r_index = right_cutoff
-    cut_title = name[:right_cutoff - (length - r_index) + 1] + "..." + name[r_index + 1:]
+    r_index = 85
+    cut_title = name[:r_index + 1] + "..." + name[-1 * (97 - r_index) + 1:]
+    print(cut_title)
     return cut_title
 
 
