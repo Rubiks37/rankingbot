@@ -31,7 +31,7 @@ The discord ids inside can be obtained by using developer mode within discord it
 
 ---
 
-I am by no means good at programming, so this initial version is a very rough version of what I want the bot to be in the future. There will be features that bug that I will certainly try to fix. 
+I'm looking at revisitng a lot of the code here because it is kind of badly written, I'm a bit more experienced now and have a bit more riding on how well I can program things like this, so I'll revisit it in a while.
 
 ### Recent Additions, see all changes in commits (most recent at top)
 
