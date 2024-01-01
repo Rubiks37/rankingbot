@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from traceback import print_exc
 import discord
@@ -9,6 +10,7 @@ import statistics
 import spotify_integration as spotify
 import homework
 import autocomplete as ac
+import changelog as cl
 
 
 # set up Discord Bot with read and write message privileges, but without mentioning privileges
@@ -22,7 +24,7 @@ tree = app_commands.CommandTree(client)
 
 # sets up guild/channel/permissions objects for later use
 my_guild = discord.Object(config.GUILD)
-changelog_channel = discord.Object
+changelog = discord.Object(config.CHANGELOG_CHANNEL)
 
 # connect to SQLite3 Database (just a server file)
 conn = sqlite3.connect('rankings.db')
@@ -72,84 +74,6 @@ def strip_names(*args):
         else:
             final.append(None)
     return final
-
-
-# CHANGELOG SECTION----------------------------------------------------------------------------------------------------
-# the changelog is a channel where every single time an update is made to someones rankings/homework,
-# it will send a message so everyone can see recent changes.
-# all of this can be disabled by setting CHANGELOG_ACTIVE to False
-# in an added album, the changes parameter is the album_id, followed by the rating
-
-
-def get_changelog_channel():
-    return client.get_channel(config.CHANGELOG_CHANNEL)
-
-
-async def changelog_add_ranking(user, album_id, rating):
-    channel = get_changelog_channel()
-    if not config.CHANGELOG_ACTIVE:
-        return
-    row = spotify.get_album(album_id=album_id)
-    artist = ", ".join(row[0])
-    await channel.send(f"RANKINGS - {user.mention}:\n`rated {artist} - {row[1]} as a {rating}`")
-    return
-
-
-# in an edited album, the changes parameter is the album_id, the old rating, and the new rating
-async def changelog_edit_ranking(user, album_id, old_rating, new_rating):
-    channel = get_changelog_channel()
-    if not config.CHANGELOG_ACTIVE:
-        return
-    row = spotify.get_album(album_id=album_id)
-    artist = ", ".join(row[0])
-    await channel.send(f"RANKINGS - {user.mention}:\n`changed {artist} - {row[1]} from a {old_rating}/10.0 to a {new_rating}/10.0`")
-    return
-
-
-# in a removed album, the changes parameter is the album_id
-# we need to use spotify api since it may not be in album_master after the removal
-async def changelog_remove_ranking(user, album_id):
-    channel = get_changelog_channel()
-    if not config.CHANGELOG_ACTIVE:
-        return
-    row = spotify.get_album(album_id=album_id)
-    artist = ", ".join(row[0])
-    await channel.send(f"RANKINGS - {user.mention}:\n`removed {artist} - {row[1]} from their rankings`")
-    return
-
-
-# in an added homework album, the changes parameter is the album_id, then the user who initiated them
-async def changelog_add_homework(user, album_id, user_affected):
-    channel = get_changelog_channel()
-    if not config.CHANGELOG_ACTIVE:
-        return
-    row = spotify.get_album(album_id=album_id)
-    artist = ", ".join(row[0])
-    if user.id == user_affected.id:
-        await channel.send(f"HOMEWORK - {user.mention}:\n`added {artist} - {row[1]} to their homework list`")
-    else:
-        await channel.send(f"HOMEWORK - {user.mention}:\n`added {artist} - {row[1]} to {user_affected.mention}'s homework list`")
-    return
-
-
-# in a finished homework album, the changes parameter is the album_id
-# we have to use spotify api because it may have been removed from album_master
-async def changelog_finish_homework(user, album_id):
-    channel = get_changelog_channel()
-    if not config.CHANGELOG_ACTIVE:
-        return
-    row = spotify.get_album(album_id=album_id)
-    artist = ", ".join(row[0])
-    await channel.send(f"HOMEWORK - {user.mention}:\n`listened to {artist} - {row[1]}`")
-    return
-
-
-async def changelog_new_user(user):
-    channel = get_changelog_channel()
-    if not config.CHANGELOG_ACTIVE:
-        return
-    await channel.send(f"{user.mention} used rankingbot for the first time lfgggg")
-    return
 
 
 # ALBUM_MASTER TABLE INTERACTIONS SECTION------------------------------------------------------------------------------
@@ -277,7 +201,7 @@ async def make_table(user_id):
     if cursor.fetchone() is None:
         # CHANGELOG - NEW USER
         user = await client.fetch_user(user_id)
-        await changelog_new_user(user)
+        await changelog.event_new_user(user)
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS user_data_{user_id} (artists TEXT, title TEXT, rating FLOAT)''')
         cursor.execute(f'''CREATE TABLE IF NOT EXISTS users (user_ids INTEGER)''')
         cursor.execute(f'''INSERT INTO users (user_ids) VALUES ('{user_id}')''')
@@ -542,6 +466,8 @@ def get_top_albums_formatted(top_number: int = 5, min_ratings: int = 2, year: in
 async def on_ready():
     await client.change_presence(activity=discord.Activity(
         type=discord.ActivityType.listening, name="your favourite music"))
+    global changelog
+    changelog = cl.Changelog(await client.fetch_channel(config.CHANGELOG_CHANNEL))
 
 
 # APPLICATION COMMAND SECTION---------------------------------------------------------------------------------------
@@ -601,7 +527,7 @@ async def add(interaction: discord.Interaction, searchkeywords: str, rating: flo
         spotify.remove_album_from_playlist(interaction.user, album_id)
         if int(date[:4]) == datetime.now().year:
             await display_rankings()
-        await changelog_add_ranking(interaction.user, album_id, rating)
+        await changelog.event_add_ranking(interaction.user, album_id, rating)
     except Exception as error:
         print_exc()
         await interaction.response.send_message(content=error)
@@ -616,9 +542,7 @@ async def addbulk(interaction: discord.Interaction, albums: str):
     try:
         await interaction.response.send_message(await add_row_bulk(interaction.user.id, albums))
         await display_rankings()
-        # i figured this was useless as a changelog method so i just put it here
-        if config.CHANGELOG_ACTIVE:
-            await changelog_channel.send(f"{interaction.user.mention} just added a bunch of new albums to their rankings")
+        await changelog.event_add_bulk(interaction.user)
     except Exception as error:
         print_exc()
         await interaction.response.send_message(content=error)
@@ -638,7 +562,7 @@ async def edit(interaction: discord.Interaction, entry: str, rating: float):
         await interaction.response.send_message(await edit_row(
             interaction.user.id, (artist, album), rating))
         await display_rankings()
-        await changelog_edit_ranking(user=interaction.user, album_id=album_id, old_rating=user_row[2], new_rating=rating)
+        await changelog.event_edit_ranking(user=interaction.user, album_id=album_id, old_rating=user_row[2], new_rating=rating)
     except Exception as error:
         print_exc()
         await interaction.response.send_message(content=error)
@@ -655,7 +579,7 @@ async def remove(interaction: discord.Interaction, entry: str):
             raise ValueError("error, you cannot remove a row that doesnt exist in your rankings")
         await interaction.response.send_message(await remove_row(interaction.user.id, (artist, album)))
         await display_rankings()
-        await changelog_remove_ranking(interaction.user, album_id)
+        await changelog.event_remove_ranking(interaction.user, album_id)
     except Exception as error:
         print_exc()
         await interaction.response.send_message(error)
@@ -728,7 +652,7 @@ async def add_homework(interaction: discord.Interaction, entry: str, user: disco
         homework.add_homework(conn, user.id, album_id)
         spotify.add_album_to_playlist(user, album_id)
         await interaction.followup.send(f"i successfully added {artists} - {album} to {user.mention}'s homework")
-        await changelog_add_homework(interaction.user, album_id, user)
+        await changelog.event_add_homework(interaction.user, album_id, user)
     except Exception as error:
         print_exc()
         await interaction.followup.send(error)
@@ -760,7 +684,7 @@ async def remove_homework(interaction: discord.Interaction, entry: str):
         # fetches album from album_master and deletes it from the users homework table
         await interaction.response.send_message(content=homework.remove_homework(conn, interaction.user.id, entry), suppress_embeds=True)
         await update_album_master()
-        await changelog_finish_homework(interaction.user, entry)
+        await changelog.event_finish_homework(interaction.user, entry)
     except Exception as error:
         print_exc()
         await interaction.response.send_message(error)
@@ -783,7 +707,7 @@ async def add_all_homework(interaction: discord.Interaction, entry: str):
                 added += 1
                 user_obj = await client.fetch_user(user)
                 spotify.add_album_to_playlist(user_obj, entry)
-                await changelog_add_homework(user_obj, entry, user_obj)
+                await changelog.event_add_homework(user_obj, entry, user_obj)
             except ValueError:
                 pass
             except Exception as error:
