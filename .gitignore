@@ -13,3 +13,4 @@ spotify_py/
 /configMAIN.py
 /future_additions.py
 /test.py
+/old_db_to_new_db.py
