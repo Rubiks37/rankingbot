@@ -1,3 +1,4 @@
+from discord import Client
 from spotify_integration import get_album
 
 # the changelog is a channel where every single time an update is made to someones rankings/homework,
@@ -7,19 +8,28 @@ from spotify_integration import get_album
 
 
 class Changelog:
-    def __init__(self, channel, changelog_active):
-        self.channel = channel
-        self.CHANGELOG_ACTIVE = changelog_active
+    def __init__(self, client: Client, changelog_active):
+        self.client = client
+        self.changelog_active = changelog_active
+
+        # this must be initialized after the bot has connected with discord,
+        # so this is initialized with initialize_channel in on_ready in main
+        self.channel = None
+
+    async def initialize_channel(self, channel_id):
+        self.channel = await self.client.fetch_channel(channel_id)
 
     @staticmethod
     def check_decorator(inner):
         def wrapper(self, *args, **kwargs):
-            if self.CHANGELOG_ACTIVE:
+            if self.changelog_active:
                 return inner(self, *args, **kwargs)
         return wrapper
 
     @check_decorator
-    async def event_add_ranking(self, user, album_id, rating):
+    async def event_add_ranking(self, user, album_id, rating, users=None):
+        if user not in users:
+            await self.channel.send(f"{user.mention} has just used ranking bot for the first time lfggggggg")
         row = get_album(album_id=album_id)
         artist = ", ".join(row[0])
         await self.channel.send(f"RANKINGS - {user.mention}:\n`rated {artist} - {row[1]} as a {rating}`")
@@ -41,7 +51,9 @@ class Changelog:
 
     # in an added homework album, the changes parameter is the album_id, then the user who initiated them
     @check_decorator
-    async def event_add_homework(self, user, album_id, user_affected):
+    async def event_add_homework(self, user, album_id, user_affected, users):
+        if user not in users:
+            await self.channel.send(f"{user.mention} has just used ranking bot for the first time lfggggggg")
         row = get_album(album_id=album_id)
         artist = ", ".join(row[0])
         if user.id == user_affected.id:
