@@ -10,7 +10,7 @@ spotifyUser = spotify.User.from_refresh_token(spotifyClient, config.spotify_refr
 
 # uses an id to find an album, and if no id is given, searches for the top result in spotify
 # returns tuple (artist, album, id, release date, image url)
-def get_album(artist_name: tuple = None, album_name=None, album_id=None):
+def get_album(artist_name: tuple = None, album_name=None, album_id=None) -> spotify.Album:
     if artist_name is None and album_name is None and album_id is None:
         raise ValueError("error: no artist, album, or id was entered")
     elif album_id is not None:
@@ -24,9 +24,7 @@ def get_album(artist_name: tuple = None, album_name=None, album_id=None):
         if results[2] is None:
             raise LookupError("error: no results found in spotify database")
         album = results[2][0]
-    artists = tuple(artist.name for artist in album.artists)
-    return artists, album.name, album.id, album.release_date, album.images[0].url
-    # return album.artists[0].name, album.name, album.id, album.release_date, album.images[0].url
+    return album
 
 
 async def search_album(current):
