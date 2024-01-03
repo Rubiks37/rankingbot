@@ -1,9 +1,11 @@
-import config
+from config import Config
 import spotify.sync as spotify
 from spotify import errors as spotify_errors
 
-spotifyClient = spotify.Client(config.SPOTIFY_CLIENT_ID, config.SPOTIFY_CLIENT_SECRET)
-spotifyUser = spotify.User.from_refresh_token(spotifyClient, config.SPOTIFY_REFRESH_TOKEN)
+config = Config()
+
+spotifyClient = spotify.Client(config.spotify_client_id, config.spotify_client_secret)
+spotifyUser = spotify.User.from_refresh_token(spotifyClient, config.spotify_refresh_token)
 
 
 # uses an id to find an album, and if no id is given, searches for the top result in spotify

@@ -5,15 +5,19 @@ import discord
 from discord import app_commands
 from discord.app_commands import Choice
 import sqlite3
-import config
+from json import dumps, loads
 import statistics
 import spotify_integration as spotify
 import homework
 import autocomplete as ac
 import changelog as cl
+from config import Config
 
 
-# set up Discord Bot with read and write message privileges, but without mentioning privileges
+# sets up config object to access settings
+config = Config()
+
+# sets up Discord Bot with read and write message privileges, but without mentioning privileges
 intents = discord.Intents.default()
 intents.message_content = True
 allowed_mentions = discord.AllowedMentions.none()
@@ -23,8 +27,8 @@ client = discord.Client(intents=intents, allowed_mentions=allowed_mentions)
 tree = app_commands.CommandTree(client)
 
 # sets up guild/channel/permissions objects for later use
-my_guild = discord.Object(config.GUILD)
-changelog = discord.Object(config.CHANGELOG_CHANNEL)
+my_guild = discord.Object(config.guild)
+changelog = discord.Object(config.changelog_channel)
 
 # connect to SQLite3 Database (just a server file)
 conn = sqlite3.connect('rankings.db')
@@ -86,7 +90,6 @@ def make_album_master():
     cursor.execute(f'''CREATE TABLE IF NOT EXISTS album_master'''
                    f'''(artist TEXT, album TEXT, id TEXT, year INTEGER, image TEXT)''')
     cursor.close()
-    return
 
 
 # implementing a solution to the duplicate name problem, a master table of albums is needed.
@@ -271,7 +274,7 @@ async def get_rankings_message(year=datetime.now().year):
 # Updates the rankings channel by deleting all messages then resending them
 async def display_rankings(year=datetime.now().year):
     conn.commit()
-    channel = client.get_channel(config.RANKING_CHANNEL)
+    channel = client.get_channel(config.ranking_channel)
     final_message = await get_rankings_message(year)
     # deletes all the messages current in the channel (that were made by the bot)
     async for message in channel.history():
@@ -400,10 +403,12 @@ def get_album_stats(album, artist=None, album_id=None):
     row = get_album_master_row(album=album, artists=artist, album_id=album_id)
     if row is None:
         raise LookupError('error: no albums found matching the name \"' + album + '\"')
+
     ratings = get_album_ratings(album=album, artist=artist)
     num_ratings = len(ratings)
     if num_ratings == 0:
-        return "This album has no ratings"
+        raise ValueError("error: This album has no ratings")
+
     mean = round(statistics.mean(ratings), 2)
     artist = ", ".join(row[0])
     final_string = f"Artist: {artist}\nAlbum: {row[1]}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
@@ -467,7 +472,7 @@ async def on_ready():
     await client.change_presence(activity=discord.Activity(
         type=discord.ActivityType.listening, name="your favourite music"))
     global changelog
-    changelog = cl.Changelog(await client.fetch_channel(config.CHANGELOG_CHANNEL))
+    changelog = cl.Changelog(client.get_channel(config.changelog_channel), config.changelog_active)
 
 
 # APPLICATION COMMAND SECTION---------------------------------------------------------------------------------------
@@ -618,7 +623,8 @@ async def stats(interaction: discord.Interaction, entry: str):
         await interaction.response.send_message(error)
 
 
-@tree.command(name='top_albums', description='find the top albums of the year (or any year) (refresh autocomplete by changing text channels)', guild=my_guild)
+@tree.command(name='top_albums', description='find the top albums of the year (or any year) '
+                                             '(refresh autocomplete by changing text channels)', guild=my_guild)
 @app_commands.describe(numberofalbums="how many albums do you want to see ranked? (default: 5)",
                        minimumratings="how many rankings do you want the album to have minimum (default: 1)",
                        year="the year you want to filter by, -1 for no filtering")
@@ -722,7 +728,7 @@ async def add_all_homework(interaction: discord.Interaction, entry: str):
 
 # SYNC COMMAND - calls tree.sync to sync new changes to application commands
 @tree.command(name='sync', description='MOD ONLY: syncs the application commands')
-@app_commands.checks.has_role(config.MOD_ID)
+@app_commands.checks.has_role(config.mod_id)
 async def sync(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
@@ -735,7 +741,7 @@ async def sync(interaction: discord.Interaction):
 
 # UPDATEALBUMMASTER - calls update_album_master
 @tree.command(name='albummaster_update', description='MOD ONLY: updates album master')
-@app_commands.checks.has_role(config.MOD_ID)
+@app_commands.checks.has_role(config.mod_id)
 async def updatealbummaster(interaction: discord.Interaction):
     try:
         await interaction.response.send_message(
@@ -748,7 +754,7 @@ async def updatealbummaster(interaction: discord.Interaction):
 # DEBUG: SQLITE3 - allows mods to run SQL commands for debugging
 @tree.command(name='sqlite3', description='DEBUG: FOR MODS ONLY, to execute sql statements', guild=my_guild)
 @app_commands.describe(command="the command to execute, be very careful about this")
-@app_commands.checks.has_role(config.MOD_ID)
+@app_commands.checks.has_role(config.mod_id)
 async def sqlite3(interaction: discord.Interaction, command: str):
     cursor = conn.cursor()
     try:
@@ -762,9 +768,9 @@ async def sqlite3(interaction: discord.Interaction, command: str):
 
 
 # DEBUG: GETALBUMMASTER - displays album_master,
-@tree.command(name='albummaster_get', description='DEBUG: FOR MODS ONLY, to display album_master for debugging', guild=my_guild)
+@tree.command(name='get_albummaster', description='DEBUG: FOR MODS ONLY, to display album_master for debugging', guild=my_guild)
 @app_commands.describe()
-@app_commands.checks.has_role(config.MOD_ID)
+@app_commands.checks.has_role(config.mod_id)
 async def getalbummaster(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
@@ -785,5 +791,5 @@ async def on_shutdown():
     spotify.close_spotify_conn()
 
 
-TOKEN = config.TOKEN
+TOKEN = config.token
 client.run(TOKEN)

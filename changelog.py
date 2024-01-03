@@ -1,4 +1,3 @@
-from config import CHANGELOG_ACTIVE, CHANGELOG_CHANNEL
 from spotify_integration import get_album
 
 # the changelog is a channel where every single time an update is made to someones rankings/homework,
@@ -8,14 +7,15 @@ from spotify_integration import get_album
 
 
 class Changelog:
-    def __init__(self, channel):
+    def __init__(self, channel, changelog_active):
         self.channel = channel
+        self.CHANGELOG_ACTIVE = changelog_active
 
     @staticmethod
     def check_decorator(inner):
-        def wrapper(*args, **kwargs):
-            if CHANGELOG_ACTIVE:
-                return inner(*args, **kwargs)
+        def wrapper(self, *args, **kwargs):
+            if self.CHANGELOG_ACTIVE:
+                return inner(self, *args, **kwargs)
         return wrapper
 
     @check_decorator
