@@ -29,7 +29,7 @@ class Config:
 def import_config_py_to_json():
     final_dict = {}
 
-    with open("config.py") as file:
+    with open("old_config.py") as file:
         for line in file.readlines():
             if '=' in line:
                 var_name, var_value = line.split('=', 1)
