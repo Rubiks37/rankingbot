@@ -9,7 +9,8 @@ __pycache__/
 spotify/
 spotify_py/
 
-/config.py
+/config.json
 /configMAIN.py
 /future_additions.py
 /test.py
+/old_db_to_new_db.py
