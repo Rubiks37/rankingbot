@@ -149,7 +149,7 @@ class RatingTable(BaseTable):
 
     def get_users_ratings(self, user_id: int):
         return self(f'''SELECT * FROM {self.name} INNER JOIN master_table USING(album_id)
-                    WHERE user_id = ?''', tuple([user_id]))
+                    WHERE user_id = ? ORDER BY rating DESC''', tuple([user_id]))
 
     def get_single_album_ratings(self, album_id):
         return self(f'''SELECT rating FROM {self.name} WHERE album_id = ?''', tuple([album_id]))
