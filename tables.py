@@ -155,7 +155,8 @@ class RatingTable(BaseTable):
         return self(f'''SELECT rating FROM {self.name} WHERE album_id = ?''', tuple([album_id]))
 
     def get_users(self):
-        return self(f'''SELECT DISTINCT user_id FROM {self.name}''')
+        user_rows = self(f'''SELECT DISTINCT user_id FROM {self.name}''')
+        return [row['user_id'] for row in user_rows]
 
     def get_grouped_ratings(self):
         # group concatenates all the ratings together with commas so i can split later
@@ -169,10 +170,10 @@ class RatingTable(BaseTable):
 
     # transforms rows into nice looking string
     def get_user_ratings_formatted(self, user_id, year=datetime.now().year):
-        rows = [row for row in self.get_users_ratings(user_id) if row[4] == year or year == -1]
+        rows = [row for row in self.get_users_ratings(user_id) if row['year'] == year or year == -1]
         rankings_str = ''
         for i, row in enumerate(rows):
-            ranking_str = f'{i + 1}. ' + ", ".join(row[0]) + f' - {row[1]} ({row[2]})'
+            ranking_str = f'{i + 1}. ' + ", ".join(row['artist']) + f" - {row['album_name']} ({row['rating']})"
             rankings_str += ranking_str + '\n'
         return rankings_str
 

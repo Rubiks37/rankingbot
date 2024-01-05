@@ -23,12 +23,14 @@ import tables
 config = Config()
 
 # sets up Discord Bot with read and write message privileges, but without mentioning privileges
+# no mentioning because there's a lot of mentions I'm doing whenever anyone updates the bot,
+# but it's possible i change this to be message specific later on
 intents = discord.Intents.default()
 intents.message_content = True
 allowed_mentions = discord.AllowedMentions.none()
 client = discord.Client(intents=intents, allowed_mentions=allowed_mentions)
 
-# sets up command tree to have application commands run with
+# sets up command tree for application commands to use
 tree = app_commands.CommandTree(client)
 
 # sets up guild/channel/permissions objects for later use
@@ -36,6 +38,8 @@ my_guild = discord.Object(config.guild)
 changelog = Changelog(client, config.changelog_active)
 
 # configure sqlite3 settings (custom JSON datatype)
+# this allows sqlite to process dictionaries and lists (which it needs to do for when i input artists,
+# since i'm storing them in a JSON format), and allows for retrieval from JSON format into dictionaries/lists
 sqlite3.register_adapter(dict, dumps)
 sqlite3.register_adapter(list, dumps)
 sqlite3.register_converter('JSON', loads)
@@ -43,22 +47,20 @@ sqlite3.register_converter('JSON', loads)
 # connect to SQLite3 Database (just a server file)
 conn = sqlite3.connect('rankings.db', detect_types=sqlite3.PARSE_DECLTYPES)
 
-# set conn return to dictionary mapping row names to values
+# set conn return rows as dictionaries which map row names to values
 conn.row_factory = tables.dict_factory
 
-# create both table objects for interacting with master table and ranking table
+# create all table objects for interacting with master table and ranking table
 master_table = tables.MasterTable(conn)
 rating_table = tables.RatingTable(conn)
 homework_table = tables.HomeworkTable(conn)
 
 
-# Sync global & guild only commands
+# syncs global & guild only commands
 async def sync_commands():
     await tree.sync()
     await tree.sync(guild=my_guild)
 
-
-# all the following functions will be needed to help make the app commands more readable and easier to follow
 
 # there will be an error if a final message is over 2000 characters
 # this code will split it up
@@ -74,6 +76,7 @@ def split_message(content):
     return fragments
 
 
+# split message, but it does it exactly every 2000 characters instead of finding the nearest newline
 def split_message_rough(content):
     if len(content) <= 2000:
         return [content]
@@ -85,20 +88,9 @@ def split_message_rough(content):
     return fragments
 
 
-# strips names down to alphanumeric characters - useful for people doing things with different symbols/capitalization
-# if none is inputted, it'll just append none
-def strip_names(*args):
-    final = []
-    for arg in args:
-        if arg is not None:
-            arg = str(arg)
-            final.append(''.join([letter.lower() for letter in arg if letter.isalnum()]))
-        else:
-            final.append(None)
-    return final
-
-
 # RANKINGS TABLE SECTION----------------------------------------------------------------------------------------------
+# formats the ratings table to a nice string
+# POSSIBLE MODIFICATION: USE EMBEDS AT THE TOP W/ NICE IMAGES TO MAKE IT LOOK EVEN BETTER
 async def get_rankings_message(year=datetime.now().year):
     users = rating_table.get_users()
     final_message = f'# Ratings of {year}\n'
@@ -134,20 +126,25 @@ async def display_rankings(year=datetime.now().year):
     return "i successfully updated everyone's album rankings maybe probably"
 
 
-# adds a row to a table for a given user
+# adds a row to ratings table for a given user
 async def add_row(user_id: int, album_id: str, rating: float):
     album = spotify.get_album(album_id=album_id)
+    # attempting to add a row in master row already will NOT return an error, it'll just not add it.
     master_table.add_row(album)
     try:
         data = rating_table.add_row(album_id, user_id, rating)
 
     # checking if any errors are due to primary key constraint,
     # meaning a user tried to add an album to their ratings twice.
-    except sqlite3.IntegrityError as error:
+    except sqlite3.IntegrityError:
         raise ValueError('error: you cannot have the same album in your rankings more than once')
 
+    # if data has no rows, then nothing was added since add commands returns whatever row it added
     if len(data) == 0:
         raise LookupError("error: no rows were added, which is confusing idk why that happened")
+
+    # NOTE: i repeat the following lines of code 3 times so maybe i should write a function for it,
+    # need to decide where it would go, in rating table or here, and what exactly it should do
     album_id = next(iter(data))['album_id']
     album = next(iter(master_table.get_row(album_id)))
     artist = ", ".join(album['artist'])
@@ -180,21 +177,12 @@ async def remove_row(user_id, album_id):
 
 
 # ALBUM STATS SECTION---------------------------------------------------------------------------------------------------
-# finds every rating that is associated with an album
-# goes through every table and gets the alphanumeric album name and then compares
-# if true, adds the rating associated to a list and returns the list
-def get_album_ratings(album_id):
-    ratings = tuple([rating['rating'] for rating in rating_table.get_single_album_ratings(album_id)])
-    return ratings
-
-
-# get album rankings, and then run some simple statistics and embed it (could add more statistics)
+# get album rankings, and then run some simple statistics and create  (could add more statistics)
 def get_album_stats(album_id):
     row = master_table.get_row(album_id)
     if row is None:
         raise LookupError("error: no albums found, potentially because you didn't select an autocomplete option")
-
-    ratings = get_album_ratings(album_id)
+    ratings = tuple([rating['rating'] for rating in rating_table.get_single_album_ratings(album_id)])
     num_ratings = len(ratings)
     if num_ratings == 0:
         raise ValueError("error: This album has no ratings")
@@ -208,9 +196,9 @@ def get_album_stats(album_id):
     return final_string
 
 
-# this will get the ratings of every single album and return a dictionary - tuple (artist, album) : tuple (ratings)
-
-
+# this will get the grouped ratings of every single album and return a list of dictionaries.
+# dictionaries include the key 'ratings' which has all the ratings for the album.
+# dictionaries also have the key 'statistic' to access whatever statistic was requested.
 def get_top_albums(top_number: int, min_ratings: int, year: int, sort_by: str):
     all_ratings = [album for album in rating_table.get_grouped_ratings()
                    if len(album['ratings']) >= min_ratings and (year == -1 or year == album['year'])]
@@ -233,6 +221,7 @@ def get_top_albums(top_number: int, min_ratings: int, year: int, sort_by: str):
     return sorted_list[:top_number]
 
 
+# formats output from get_top_albums into a message
 def get_top_albums_formatted(top_number: int = 5, min_ratings: int = 2, year: int = -1, sortby: str = "avg"):
     rankings = get_top_albums(top_number, min_ratings, year, sortby)
     if 'avg' in sortby:
@@ -244,7 +233,8 @@ def get_top_albums_formatted(top_number: int = 5, min_ratings: int = 2, year: in
     return final_string
 
 
-# whenever the bot is ready, it'll log this
+# whenever the bot is ready, it'll run this, initiating the changelog properly since client is now ready
+# and changing the discord presence (because it's cool)
 @client.event
 async def on_ready():
     await changelog.initialize_channel(config.changelog_channel)
