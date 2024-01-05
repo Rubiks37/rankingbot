@@ -37,6 +37,7 @@ I'm looking at revisitng a lot of the code here because it is kind of badly writ
 ### Recent Additions, see all changes in commits (most recent at top)
 
 ---
+* complete reorganization to increase readability
 * convert settings to json
 * added new app command /top_albums which gets top albums for a particular year
 * added changelog
@@ -45,14 +46,11 @@ I'm looking at revisitng a lot of the code here because it is kind of badly writ
 * integrated homework bot (add/remove albums for you/others to listen to)
 * added autocomplete integration with spotify
 * added spotify compatibility with /add and /cover commands
-* fix the issue of having multiple album/eps of the same name in the database, it should be much more friendly to that
-* added album_master, which stores cover image urls from spotify api and also allows for less stupidness when getting album names for all commands that require it
 
 
 ### To add list in the future
 
 ---
-* complete reorganization to increase readability
 * allow for commands to change settings
 * /help command
 * add an undo feature
