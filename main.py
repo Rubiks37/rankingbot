@@ -260,7 +260,7 @@ async def update(interaction: discord.Interaction):
         await interaction.followup.send('i probably updated the entire bot hopefully')
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(content=error)
+        await interaction.followup.send(content=error)
 
 
 # SHOW RANKINGS COMMAND - prints the ratings of the given year (default == current year)
@@ -275,7 +275,7 @@ async def get_ratings(interaction: discord.Interaction, year: int = datetime.now
         [await interaction.channel.send(content=i) for i in messages[1:]]
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(content=error)
+        await interaction.followup.send(content=error)
 
 
 # ADD COMMAND - uses spotify + autocomplete to find albums
@@ -300,7 +300,7 @@ async def add(interaction: discord.Interaction, album_id: str, rating: float):
         await master_table.update_master_table(rating_table, homework_table)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(content=error)
+        await interaction.followup.send(content=error)
 
 
 # EDIT COMMAND - edits the ranking of a certain album on a users list
@@ -322,7 +322,7 @@ async def edit(interaction: discord.Interaction, album_id: str, rating: float):
         await changelog.event_edit_ranking(user=interaction.user, album_id=album_id, old_rating=old_rating['rating'], new_rating=rating)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(content=error)
+        await interaction.followup.send(content=error)
 
 
 # REMOVE COMMAND - removes an album from a users list
@@ -344,7 +344,7 @@ async def remove(interaction: discord.Interaction, album_id: str):
         await master_table.update_master_table(rating_table, homework_table)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(error)
+        await interaction.followup.send(content=error)
 
 
 # COVER COMMAND - displays the cover of the album
@@ -361,7 +361,7 @@ async def cover(interaction: discord.Interaction, album_id: str):
         await interaction.response.send_message(embed=embed)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(error)
+        await interaction.followup.send(content=error)
 
 
 # STATS COMMAND - displays stats for a certain album based on current rankings
@@ -380,7 +380,7 @@ async def stats(interaction: discord.Interaction, album_id: str):
         await interaction.response.send_message(embed=embed)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(error)
+        await interaction.followup.send(content=error)
 
 
 @tree.command(name='top-albums', description='find the top albums of the year (or any year) '
@@ -396,7 +396,7 @@ async def top_albums(interaction: discord.Interaction, numberofalbums: int = 5, 
         await interaction.response.send_message(get_top_albums_formatted(numberofalbums, minimumratings, year, sortby))
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(error)
+        await interaction.followup.send(content=error)
 
 
 # ADD HOMEWORK - adds homework for a certain user
@@ -440,7 +440,7 @@ async def get_homework(interaction: discord.Interaction, user: discord.User = No
 
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(error)
+        await interaction.followup.send(error)
 
 
 # REMOVE_HOMEWORK: deletes homework from a users list
@@ -456,7 +456,7 @@ async def remove_homework(interaction: discord.Interaction, album_id: str):
         await changelog.event_finish_homework(interaction.user, album_id)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(error)
+        await interaction.followup.send(content=error)
 
 
 # ADD ALL HOMEWORK - adds homework to everyones homework
@@ -487,7 +487,7 @@ async def add_all_homework(interaction: discord.Interaction, album_id: str):
         await master_table.update_master_table(rating_table, homework_table)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(error)
+        await interaction.followup.send(error)
 
 
 # SYNC COMMAND - calls tree.sync to sync new changes to application commands
@@ -533,7 +533,7 @@ async def get_master_table(interaction: discord.Interaction):
             await interaction.channel.send(msg)
     except Exception as error:
         print_exc()
-        await interaction.response.send_message(content=error)
+        await interaction.followup.send(content=error)
 
 if __name__ == '__main__':
     TOKEN = config.token
