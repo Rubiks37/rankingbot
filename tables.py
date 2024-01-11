@@ -165,12 +165,13 @@ class RatingTable(BaseTable):
 
         # splits ratings into lists for each album
         for album in data:
-            album['ratings'] = album['ratings'].split(',')
+            # needs each rating (separated by commas) to be a float, so cast using map
+            album['ratings'] = list(map(float, album['ratings'].split(',')))
         return data
 
     # transforms rows into nice looking string
     def get_user_ratings_formatted(self, user_id, year=datetime.now().year):
-        rows = [row for row in self.get_users_ratings(user_id) if row['year'] == year or year == -1]
+        rows = [row for row in self.get_users_ratings(user_id) if int(row['year']) == int(year) or int(year) == -1]
         rankings_str = ''
         for i, row in enumerate(rows):
             ranking_str = f'{i + 1}. ' + ", ".join(row['artist']) + f" - {row['album_name']} ({row['rating']})"

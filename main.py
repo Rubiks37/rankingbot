@@ -108,7 +108,11 @@ async def get_rankings_message(year=datetime.now().year):
 
 # Updates the rankings channel by deleting all messages then resending them
 async def display_rankings(year=datetime.now().year):
-    channel = client.get_channel(config.ranking_channel)
+    channel_id = config.ranking_channels.get(year)
+    if not channel_id:
+        raise ValueError(f'error: no channel found for {year}. ask a mod for help.')
+
+    channel = client.get_channel(channel_id)
     final_message = await get_rankings_message(year)
 
     # deletes all the messages current in the channel (that were made by the bot)
@@ -177,19 +181,21 @@ async def remove_row(user_id, album_id):
 
 
 # ALBUM STATS SECTION---------------------------------------------------------------------------------------------------
-# get album rankings, and then run some simple statistics and create  (could add more statistics)
+# get album rankings, and then run some simple statistics and create (could add more statistics)
 def get_album_stats(album_id):
-    row = master_table.get_row(album_id)
-    if row is None:
+    data = master_table.get_row(album_id)
+    if len(data) == 0:
         raise LookupError("error: no albums found, potentially because you didn't select an autocomplete option")
+
+    row = next(iter(data))
     ratings = tuple([rating['rating'] for rating in rating_table.get_single_album_ratings(album_id)])
     num_ratings = len(ratings)
     if num_ratings == 0:
         raise ValueError("error: This album has no ratings")
 
     mean = round(statistics.mean(ratings), 2)
-    artist = ", ".join(row[0])
-    final_string = f"Artist: {artist}\nAlbum: {row[1]}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
+    artist = ", ".join(row['artist'])
+    final_string = f"Artist: {artist}\nAlbum: {row['album_name']}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
     if len(ratings) > 1:
         std_deviation = round(statistics.stdev(ratings), 2)
         final_string += f"\nStandard Deviation: {std_deviation}"
@@ -247,8 +253,11 @@ async def on_ready():
 @tree.command(name="update", description="update the album rankings", guild=my_guild)
 async def update(interaction: discord.Interaction):
     try:
+        await interaction.response.defer()
         await master_table.update_master_table(rating_table, homework_table)
-        await interaction.response.send_message(await display_rankings())
+        for year in config.ranking_channels:
+            await display_rankings(year)
+        await interaction.followup.send('i probably updated the entire bot hopefully')
     except Exception as error:
         print_exc()
         await interaction.response.send_message(content=error)
@@ -277,13 +286,16 @@ async def get_ratings(interaction: discord.Interaction, year: int = datetime.now
 async def add(interaction: discord.Interaction, album_id: str, rating: float):
     try:
         album = spotify.get_album(album_id=album_id)
-        await interaction.response.send_message(await add_row(album_id=album_id, user_id=interaction.user.id,
+        await interaction.response.send_message(await add_row(album_id=album_id,
+                                                              user_id=interaction.user.id,
                                                               rating=rating))
         # Remove from the homework, if it exists there
         homework_table.remove_homework(interaction.user.id, album_id)
         spotify.remove_album_from_playlist(interaction.user, album_id)
-        if datetime.fromisoformat(album.release_date).year == datetime.now().year:
-            await display_rankings()
+
+        year = datetime.fromisoformat(album.release_date).year
+        if year in config.ranking_channels:
+            await display_rankings(year)
         await changelog.event_add_ranking(interaction.user, album_id, rating)
         await master_table.update_master_table(rating_table, homework_table)
     except Exception as error:
@@ -300,11 +312,13 @@ async def add(interaction: discord.Interaction, album_id: str, rating: float):
 async def edit(interaction: discord.Interaction, album_id: str, rating: float):
     try:
         old_rating = rating_table.get_single_rating(interaction.user.id, album_id)
-        if old_rating is None:
+        if len(old_rating) == 0:
             raise ValueError("error: you cannot edit a rating that isnt on your list")
-
         await interaction.response.send_message(await edit_row(interaction.user.id, album_id, rating))
-        await display_rankings()
+
+        year = next(iter(old_rating))['year']
+        if year in config.ranking_channels:
+            await display_rankings(year)
         await changelog.event_edit_ranking(user=interaction.user, album_id=album_id, old_rating=old_rating['rating'], new_rating=rating)
     except Exception as error:
         print_exc()
@@ -318,10 +332,14 @@ async def edit(interaction: discord.Interaction, album_id: str, rating: float):
 @app_commands.autocomplete(album_id=ac.autocomplete_artist_album_user_specific(rating_table.get_users_ratings))
 async def remove(interaction: discord.Interaction, album_id: str):
     try:
-        if rating_table.get_single_rating(interaction.user.id, album_id) is None:
+        old_rating = rating_table.get_single_rating(interaction.user.id, album_id)
+        if len(old_rating) == 0:
             raise ValueError("error, you cannot remove a row that doesnt exist in your rankings")
         await interaction.response.send_message(await remove_row(interaction.user.id, album_id))
-        await display_rankings()
+
+        year = next(iter(old_rating))['year']
+        if year in config.ranking_channels:
+            await display_rankings(year)
         await changelog.event_remove_ranking(interaction.user, album_id)
         await master_table.update_master_table(rating_table, homework_table)
     except Exception as error:
@@ -353,11 +371,11 @@ async def cover(interaction: discord.Interaction, album_id: str):
 @app_commands.autocomplete(album_id=ac.autocomplete_artist_album(master_table.get_full_table))
 async def stats(interaction: discord.Interaction, album_id: str):
     try:
-        artist, album, album_id, date, image = spotify.get_album(album_id=album_id)
+        album = spotify.get_album(album_id=album_id)
         if rating_table.get_single_rating(interaction.user.id, album_id) is None:
             raise ValueError("error: you cannot get stats for an album that is not ranked by anyone")
-        album_cover = image
-        embed = discord.Embed(title=album, description=get_album_stats(album_id=album_id))
+        album_cover = album.images[0].url
+        embed = discord.Embed(title=album.name, description=get_album_stats(album_id=album_id))
         embed.set_image(url=album_cover)
         await interaction.response.send_message(embed=embed)
     except Exception as error:
@@ -517,13 +535,11 @@ async def get_master_table(interaction: discord.Interaction):
         print_exc()
         await interaction.response.send_message(content=error)
 
+if __name__ == '__main__':
+    TOKEN = config.token
+    client.run(TOKEN)
 
-@client.event
-async def on_shutdown():
+    # these lines should run after bots event loop is stopped
     conn.commit()
     conn.close()
     spotify.close_spotify_conn()
-
-
-TOKEN = config.token
-client.run(TOKEN)
