@@ -5,24 +5,23 @@ class Config:
     def __init__(self):
         with open('config.json') as file:
             self.data = loads(file.read())
-            self.token = self.data.get("TOKEN")
-            self.guild = self.data.get("GUILD")
-            self.ranking_channel = self.data.get("RANKING_CHANNEL")
-            self.command_channel = self.data.get("COMMAND_CHANNEL")
-            self.changelog_channel = self.data.get("CHANGELOG_CHANNEL")
-            self.changelog_active = self.data.get("CHANGELOG_ACTIVE")
-            self.mod_id = self.data.get("MOD_ID")
-            self.spotify_client_id = self.data.get("SPOTIFY_CLIENT_ID")
-            self.spotify_client_secret = self.data.get("SPOTIFY_CLIENT_SECRET")
-            self.spotify_refresh_token = self.data.get("SPOTIFY_REFRESH_TOKEN")
 
-    def change_config(self, attribute, new_value):
+    def __getattr__(self, name: str):
+        attribute = self.data.get(name.upper())
+        if not attribute:
+            raise AttributeError("error: config does not have a value called " + name)
+        return attribute
+
+    def __setattr__(self, name, value):
+        if name == 'data':
+            self.__dict__['data'] = value
+            return
         try:
-            self.data[attribute] = new_value
-            with open('config.json') as file:
+            self.data[name.upper()] = value
+            with open('config.json', 'w') as file:
                 file.write(dumps(self.data, indent=3))
         except KeyError:
-            raise KeyError(attribute + ' is not a valid config setting')
+            raise KeyError(name + ' is not a valid config setting')
 
 
 # needs config.py to exist with already existing settings valid
