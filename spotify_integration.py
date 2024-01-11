@@ -73,4 +73,3 @@ def remove_album_from_playlist(user, album_id):
 
 def close_spotify_conn():
     spotifyClient.close()
-    spotifyUser.close()
