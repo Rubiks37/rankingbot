@@ -179,7 +179,8 @@ class RatingTable(BaseTable):
         return rankings_str
 
     def get_single_rating(self, user_id, album_id):
-        return self(f'''SELECT * FROM {self.name} WHERE user_id = ? AND album_id = ?''',
+        return self(f'''SELECT * FROM {self.name} INNER JOIN master_table USING (album_id) 
+        WHERE user_id = ? AND album_id = ? ''',
                     (user_id, album_id))
 
     def add_row(self, album_id: str, user_id: int, rating: float):
