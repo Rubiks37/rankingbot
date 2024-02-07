@@ -181,7 +181,8 @@ async def remove_row(user_id, album_id):
 
 
 # ALBUM STATS SECTION---------------------------------------------------------------------------------------------------
-# get album rankings, and then run some simple statistics and create (could add more statistics)
+
+# get album rankings, and then run some simple statistics (could add more statistics)
 def get_album_stats(album_id):
     data = master_table.get_row(album_id)
     if len(data) == 0:
@@ -196,7 +197,7 @@ def get_album_stats(album_id):
     mean = round(statistics.mean(ratings), 2)
     artist = ", ".join(row['artist'])
     final_string = f"Artist: {artist}\nAlbum: {row['album_name']}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
-    if len(ratings) > 1:
+    if num_ratings > 1:
         std_deviation = round(statistics.stdev(ratings), 2)
         final_string += f"\nStandard Deviation: {std_deviation}"
     return final_string
@@ -251,6 +252,7 @@ async def on_ready():
 # APPLICATION COMMAND SECTION---------------------------------------------------------------------------------------
 # UPDATE COMMAND - rewrites the rankings in album rankings
 @tree.command(name="update", description="update the album rankings", guild=my_guild)
+@app_commands.checks.has_role(config.mod_id)
 async def update(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
@@ -502,38 +504,6 @@ async def sync(interaction: discord.Interaction):
     except Exception as error:
         await interaction.followup.send(content=error)
 
-
-# DEBUG: SQLITE3 - allows mods to run SQL commands for debugging
-@tree.command(name='sqlite', description='DEBUG: FOR MODS ONLY, to execute sql statements', guild=my_guild)
-@app_commands.describe(command="the command to execute, be very careful about this")
-@app_commands.checks.has_role(config.mod_id)
-async def sqlite(interaction: discord.Interaction, command: str):
-    cursor = conn.cursor()
-    try:
-        cursor.execute(command)
-        await interaction.response.send_message(content=cursor.fetchall())
-    except Exception as error:
-        print_exc()
-        await interaction.response.send_message(content=error)
-    finally:
-        cursor.close()
-
-
-# DEBUG: GETALBUMMASTER - displays album_master,
-@tree.command(name='get-master-table', description='DEBUG: FOR MODS ONLY, to display album_master for debugging', guild=my_guild)
-@app_commands.describe()
-@app_commands.checks.has_role(config.mod_id)
-async def get_master_table(interaction: discord.Interaction):
-    try:
-        await interaction.response.defer()
-        data = str(master_table.get_full_table())
-        result = split_message_rough(data)
-        await interaction.followup.send(content=result[0])
-        for msg in result[1:]:
-            await interaction.channel.send(msg)
-    except Exception as error:
-        print_exc()
-        await interaction.followup.send(content=error)
 
 if __name__ == '__main__':
     TOKEN = config.token
