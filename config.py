@@ -1,39 +1,26 @@
 from json import loads, dumps
+from dataclasses import dataclass
 
 
+@dataclass(frozen=True)
 class Config:
-    def __init__(self):
-        with open('config.json') as file:
-            self.data = loads(file.read())
+    token: str
+    guild: int
+    ranking_channels: dict
+    changelog_active: bool
+    changelog_channel: int
+    mod_id: int
+    spotify_client_id: str
+    spotify_client_secret: str
+    spotify_refresh_token: str
 
-    def __getattr__(self, name: str):
-        attribute = self.data.get(name.upper())
-        if not attribute:
-            raise AttributeError("error: config does not have a value called " + name)
-        return attribute
+    @classmethod
+    def from_file(cls, config_file_name):
+        with open(config_file_name) as file:
+            raw_data = loads(file.read())
+        data = {key.lower(): value for key, value in raw_data.items()}
 
-    def __setattr__(self, name, value):
-        if name == 'data':
-            self.__dict__['data'] = value
-            return
-        try:
-            self.data[name.upper()] = value
-            with open('config.json', 'w') as file:
-                file.write(dumps(self.data, indent=3))
-        except KeyError:
-            raise KeyError(name + ' is not a valid config setting')
-
-
-# needs config.py to exist with already existing settings valid
-def import_config_py_to_json():
-    final_dict = {}
-
-    with open("old_config.py") as file:
-        for line in file.readlines():
-            if '=' in line:
-                var_name, var_value = line.split('=', 1)
-                final_dict[var_name.strip()] = var_value.strip().strip('"')
-
-    with open('config.json', 'w') as file:
-        json_object = dumps(final_dict, indent=3)
-        file.write(json_object)
+        # since json stores keys as strings, the ranking_channel dict won't load properly, so we have to change it
+        ranking_channels = {int(key): value for key, value in data.get("ranking_channels").items()}
+        data.update({"ranking_channels": ranking_channels})
+        return cls(**data)
