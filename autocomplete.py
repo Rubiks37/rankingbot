@@ -24,7 +24,6 @@ def autocomplete_slice_names_100(name):
     # so that the length of that plus and length of the right string add to 97
     r_index = 85
     cut_title = name[:r_index + 1] + "..." + name[-1 * (97 - r_index) + 1:]
-    print(cut_title)
     return cut_title
 
 
