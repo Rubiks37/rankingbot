@@ -1,25 +1,26 @@
 from json import loads, dumps
+from dataclasses import dataclass
 
 
+@dataclass(frozen=True)
 class Config:
-    def __init__(self):
-        with open('config.json') as file:
-            self._config = loads(file.read())
+    token: str
+    guild: int
+    ranking_channels: dict
+    changelog_active: bool
+    changelog_channel: int
+    mod_id: int
+    spotify_client_id: str
+    spotify_client_secret: str
+    spotify_refresh_token: str
 
-    def __getattr__(self, name: str):
-        try:
-            return self._config[name.upper()]
-        except KeyError:
-            raise AttributeError(name + ' is not a valid config setting')
+    @classmethod
+    def from_file(cls, config_file_name):
+        with open(config_file_name) as file:
+            raw_data = loads(file.read())
+        data = {key.lower(): value for key, value in raw_data.items()}
 
-    def set_attribute(self, name: str, value):
-        try:
-            self._config[name] = value
-            data = dumps(self._config, indent=3)
-            # i don't actually know if this will ever be called
-            if not data:
-                raise AttributeError('config settings are empty, cannot set attribute')
-            with open('config.json', 'w') as file:
-                file.write(data)
-        except KeyError:
-            raise AttributeError(name + ' is not a valid config setting')
+        # since json stores keys as strings, the ranking_channel dict won't load properly, so we have to change it
+        ranking_channels = {int(key): value for key, value in data.get("ranking_channels").items()}
+        data.update({"ranking_channels": ranking_channels})
+        return cls(**data)
