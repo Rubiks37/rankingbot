@@ -12,7 +12,7 @@ from discord import app_commands
 from discord.app_commands import Choice
 
 # import other files
-import spotify_integration as spotify
+from spotify_integration import Spotify
 import autocomplete as ac
 from changelog import Changelog
 from config import Config
@@ -20,11 +20,14 @@ import tables
 
 
 # sets up config object to access settings
-config = Config()
+config = Config.from_file('config.json')
+
+# sets up access to spotify object
+spotify = Spotify(config.spotify_client_id, config.spotify_client_secret, config.spotify_refresh_token)
 
 # sets up Discord Bot with read and write message privileges, but without mentioning privileges
 # no mentioning because there's a lot of mentions I'm doing whenever anyone updates the bot,
-# but it's possible i change this to be message specific later on
+# but it's possible I change this to be message specific later on
 intents = discord.Intents.default()
 intents.message_content = True
 allowed_mentions = discord.AllowedMentions.none()
@@ -32,10 +35,6 @@ client = discord.Client(intents=intents, allowed_mentions=allowed_mentions)
 
 # sets up command tree for application commands to use
 tree = app_commands.CommandTree(client)
-
-# sets up guild/channel/permissions objects for later use
-my_guild = discord.Object(config.guild)
-changelog = Changelog(client, config.changelog_active)
 
 # configure sqlite3 settings (custom JSON datatype)
 # this allows sqlite to process dictionaries and lists (which it needs to do for when i input artists,
@@ -51,9 +50,13 @@ conn = sqlite3.connect('rankings.db', detect_types=sqlite3.PARSE_DECLTYPES)
 conn.row_factory = tables.dict_factory
 
 # create all table objects for interacting with master table and ranking table
-master_table = tables.MasterTable(conn)
-rating_table = tables.RatingTable(conn)
-homework_table = tables.HomeworkTable(conn)
+master_table = tables.MasterTable(conn, spotify)
+rating_table = tables.RatingTable(conn, spotify)
+homework_table = tables.HomeworkTable(conn, spotify)
+
+# sets up guild/channel/permissions objects for later use
+my_guild = discord.Object(config.guild)
+changelog = Changelog(config.changelog_active, spotify.get_album, config.changelog_channel, set(rating_table.get_users()))
 
 
 # syncs global & guild only commands
@@ -136,7 +139,7 @@ async def add_row(user_id: int, album_id: str, rating: float):
     # attempting to add a row in master row already will NOT return an error, it'll just not add it.
     master_table.add_row(album)
     try:
-        data = rating_table.add_row(album_id, user_id, rating)
+        added_rows = rating_table.add_row(album_id, user_id, rating)
 
     # checking if any errors are due to primary key constraint,
     # meaning a user tried to add an album to their ratings twice.
@@ -144,12 +147,12 @@ async def add_row(user_id: int, album_id: str, rating: float):
         raise ValueError('error: you cannot have the same album in your rankings more than once')
 
     # if data has no rows, then nothing was added since add commands returns whatever row it added
-    if len(data) == 0:
+    if len(added_rows) == 0:
         raise LookupError("error: no rows were added, which is confusing idk why that happened")
 
     # NOTE: i repeat the following lines of code 3 times so maybe i should write a function for it,
     # need to decide where it would go, in rating table or here, and what exactly it should do
-    album_id = next(iter(data))['album_id']
+    album_id = next(iter(added_rows))['album_id']
     album = next(iter(master_table.get_row(album_id)))
     artist = ", ".join(album['artist'])
     album = album['album_name']
@@ -158,10 +161,10 @@ async def add_row(user_id: int, album_id: str, rating: float):
 
 # edits a row in a given table
 async def edit_row(user_id: int, album_id: str, rating: float):
-    data = rating_table.edit_row(album_id, user_id, rating)
-    if len(data) == 0:
+    edited_rows = rating_table.edit_row(album_id, user_id, rating)
+    if len(edited_rows) == 0:
         raise LookupError("error: no rows were edited, which is confusing idk why that happened")
-    album_id = next(iter(data))['album_id']
+    album_id = next(iter(edited_rows))['album_id']
     album = next(iter(master_table.get_row(album_id)))
     artist = ", ".join(album['artist'])
     album = album['album_name']
@@ -170,10 +173,10 @@ async def edit_row(user_id: int, album_id: str, rating: float):
 
 # removes a row from a certain users table
 async def remove_row(user_id, album_id):
-    data = rating_table.remove_row(album_id, user_id)
-    if data is None:
+    removed_rows = rating_table.remove_row(album_id, user_id)
+    if removed_rows is None:
         raise LookupError("error: no rows were deleted, whyy?????")
-    album_id = next(iter(data))['album_id']
+    album_id = next(iter(removed_rows))['album_id']
     album = next(iter(master_table.get_row(album_id)))
     artist = ", ".join(album['artist'])
     album = album['album_name']
@@ -188,15 +191,15 @@ def get_album_stats(album_id):
     if len(data) == 0:
         raise LookupError("error: no albums found, potentially because you didn't select an autocomplete option")
 
-    row = next(iter(data))
+    album_row = next(iter(data))
     ratings = tuple([rating['rating'] for rating in rating_table.get_single_album_ratings(album_id)])
     num_ratings = len(ratings)
     if num_ratings == 0:
         raise ValueError("error: This album has no ratings")
 
     mean = round(statistics.mean(ratings), 2)
-    artist = ", ".join(row['artist'])
-    final_string = f"Artist: {artist}\nAlbum: {row['album_name']}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
+    artist = ", ".join(album_row['artist'])
+    final_string = f"Artist: {artist}\nAlbum: {album_row['album_name']}\nNumber of Ratings: {num_ratings}\nMean: {mean}"
     if num_ratings > 1:
         std_deviation = round(statistics.stdev(ratings), 2)
         final_string += f"\nStandard Deviation: {std_deviation}"
@@ -244,7 +247,7 @@ def get_top_albums_formatted(top_number: int = 5, min_ratings: int = 2, year: in
 # and changing the discord presence (because it's cool)
 @client.event
 async def on_ready():
-    await changelog.initialize_channel(config.changelog_channel)
+    await changelog.initialize_channel(client)
     await client.change_presence(activity=discord.Activity(
         type=discord.ActivityType.listening, name="your favourite music"))
 
@@ -293,7 +296,8 @@ async def add(interaction: discord.Interaction, album_id: str, rating: float):
                                                               rating=rating))
         # Remove from the homework, if it exists there
         homework_table.remove_homework(interaction.user.id, album_id)
-        spotify.remove_album_from_playlist(interaction.user, album_id)
+        # spotify api is broken with playlists, will comment out until fix is found
+        # spotify.remove_album_from_playlist(interaction.user, album_id)
 
         year = datetime.fromisoformat(album.release_date).year
         if year in config.ranking_channels:
@@ -418,7 +422,8 @@ async def add_homework(interaction: discord.Interaction, album_id: str, user: di
         if rating_table.get_single_rating(user.id, album_id) is not None:
             raise ValueError(f"error: {user.mention} has already listened to {artists} - {album.name}")
         homework_table.add_homework(user.id, album_id)
-        spotify.add_album_to_playlist(user, album_id)
+        # adding song to spotify playlist is broken with current version of our spotify api wrapper
+        # spotify.add_album_to_playlist(user, album_id)
         await interaction.followup.send(f"i successfully added {artists} - {album.name} to {user.mention}'s homework")
         await changelog.event_add_homework(interaction.user, album_id, user)
     except Exception as error:
@@ -478,7 +483,8 @@ async def add_all_homework(interaction: discord.Interaction, album_id: str):
                 homework_table.add_homework(user.id, album_id)
                 added += 1
                 user_obj = await client.fetch_user(user)
-                spotify.add_album_to_playlist(user_obj, album_id)
+                # spotify playlists are broken so this will be commented out until a fix is found
+                # spotify.add_album_to_playlist(user_obj, album_id)
                 await changelog.event_add_homework(user_obj, album_id, user_obj)
             except ValueError:
                 pass
