@@ -2,18 +2,21 @@ import sqlite3
 from itertools import repeat
 from spotify import Album
 from datetime import datetime
-from spotify_integration import get_playlist, get_album
+from spotify_integration import Spotify
 
 
 class BaseTable:
 
-    def __init__(self, conn: sqlite3.Connection,
+    def __init__(self,
+                 conn: sqlite3.Connection,
+                 spotify: Spotify,
                  name: str,
                  cols: tuple,
                  col_types: tuple,
                  primary_key: str = None,
                  create_table_appendix: str = ' '):
         self.conn = conn
+        self.spotify = spotify
         self.cols = cols
         self.col_types = col_types
         self.name = name
@@ -84,10 +87,10 @@ class BaseTable:
 # it stores properly formatted artist name (0), album name (1), the spotify album id (2),
 # the release year (3) and a hyperlink to the cover image (4)
 class MasterTable(BaseTable):
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, spotify: Spotify):
         cols = ('album_id', 'album_name', 'artist', 'year', 'album_cover_url')
         col_types = ('VARCHAR(25) PRIMARY KEY', 'VARCHAR(255)', 'JSON', 'INTEGER', 'VARCHAR(255)')
-        super().__init__(conn, 'master_table', cols, col_types, primary_key='album_id')
+        super().__init__(conn, spotify, 'master_table', cols, col_types, primary_key='album_id')
 
     def insert_single_row(self, row: tuple, appendix=' '):
         if len(row) != len(self.cols):
@@ -131,17 +134,17 @@ class MasterTable(BaseTable):
         # finding albums in user_album or homework but not in master
         add_to_master = (user_album_ids | homework_album_ids) - master_ids
         for album_id in add_to_master:
-            album = get_album(album_id=album_id)
+            album = self.spotify.get_album(album_id=album_id)
             self.add_row(album)
 
 
 class RatingTable(BaseTable):
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, spotify: Spotify):
         cols = ('album_id', 'user_id', 'rating')
         col_types = ('VARCHAR(25)', 'INTEGER', 'FLOAT')
         appendix = (', FOREIGN KEY (album_id) REFERENCES master_table(album_id) '
                     'PRIMARY KEY (album_id, user_id)')
-        super().__init__(conn, 'rating_table', cols, col_types,
+        super().__init__(conn, spotify, 'rating_table', cols, col_types,
                          primary_key='album_id', create_table_appendix=appendix)
 
     def get_full_table(self):
@@ -196,12 +199,12 @@ class RatingTable(BaseTable):
 
 
 class HomeworkTable(BaseTable):
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, spotify: Spotify):
         name = 'homework_table'
         cols = ('album_id', 'user_id', 'complete')
         col_types = ('VARCHAR(25)', 'INTEGER', 'BIT')
         appendix = ', PRIMARY KEY (album_id, user_id)'
-        super().__init__(conn, name, cols, col_types, create_table_appendix=appendix)
+        super().__init__(conn, spotify, name, cols, col_types, create_table_appendix=appendix)
 
     def add_homework(self, user_id, album_id):
         try:
@@ -239,7 +242,7 @@ class HomeworkTable(BaseTable):
             output += f"{i + 1}. " + ", ".join(row['artist']) + f" - {row['album_name']} ({row['year']})\n"
         if len(data) == 0:
             output += f"{user.display_name} doesn't have any homework at the moment\n"
-        return output + f"\nPlaylist URL: {get_playlist(user).url}"
+        return output + f"\nPlaylist URL: {self.spotify.get_playlist(user).url}"
 
 
 # this is for sqlite3 connection to transform rows into dictionaries
