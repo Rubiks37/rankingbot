@@ -28,7 +28,7 @@ class Changelog:
         return wrapper
 
     @check_decorator
-    async def event_add_ranking(self, user: User, album_id: int, rating: float):
+    async def event_add_ranking(self, user: User, album_id: str, rating: float):
         if user.id not in self.users:
             await self.event_new_user(user)
         album = self.get_album(album_id=album_id)
@@ -37,7 +37,7 @@ class Changelog:
 
     # in an edited album, the changes parameter is the album_id, the old rating, and the new rating
     @check_decorator
-    async def event_edit_ranking(self, user: User, album_id: int, old_rating: float, new_rating: float):
+    async def event_edit_ranking(self, user: User, album_id: str, old_rating: float, new_rating: float):
         album = self.get_album(album_id=album_id)
         artist = ", ".join([artist.name for artist in album.artists])
         await self.channel.send(f"RANKINGS - {user.mention}:\n`changed {artist} - {album.name} from a {old_rating}/10.0 to a {new_rating}/10.0`")
@@ -45,14 +45,14 @@ class Changelog:
     # in a removed album, the changes parameter is the album_id
     # we need to use spotify api since it may not be in album_master after the removal
     @check_decorator
-    async def event_remove_ranking(self, user: User, album_id: int):
+    async def event_remove_ranking(self, user: User, album_id: str):
         album = self.get_album(album_id=album_id)
         artist = ", ".join([artist.name for artist in album.artists])
         await self.channel.send(f"RANKINGS - {user.mention}:\n`removed {artist} - {album.name} from their rankings`")
 
     # in an added homework album, the changes parameter is the album_id, then the user who initiated them
     @check_decorator
-    async def event_add_homework(self, user: User, album_id: int, user_affected: User):
+    async def event_add_homework(self, user: User, album_id: str, user_affected: User):
         if user not in self.users:
             await self.event_new_user(user)
         album = self.get_album(album_id=album_id)
@@ -65,7 +65,7 @@ class Changelog:
     # in a finished homework album, the changes parameter is the album_id
     # we have to use spotify api because it may have been removed from album_master
     @check_decorator
-    async def event_finish_homework(self, user: User, album_id: int):
+    async def event_finish_homework(self, user: User, album_id: str):
         album = self.get_album(album_id=album_id)
         artist = ", ".join([artist.name for artist in album.artists])
         await self.channel.send(f"HOMEWORK - {user.mention}:\n`listened to {artist} - {album.name}`")
